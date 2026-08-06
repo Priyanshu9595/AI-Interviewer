@@ -1,0 +1,525 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Accounts
+// ---------------------------------------------------------------------------
+
+enum UserRole {
+  RECRUITER
+  MENTOR
+  ADMIN
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String?
+  company   String?
+  role      UserRole @default(RECRUITER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  interviewSessions InterviewSession[]
+  atsIntegrations   AtsIntegration[]
+}
+
+// ---------------------------------------------------------------------------
+// Sessions
+// ---------------------------------------------------------------------------
+
+enum InterviewType {
+  TECHNICAL
+  HR
+  MIXED
+}
+
+enum SessionStatus {
+  DRAFT
+  SCHEDULED
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+/// Tone/character the AI interviewer adopts. Drives the system prompt.
+enum InterviewerPersonality {
+  FRIENDLY
+  NEUTRAL
+  FORMAL
+  CHALLENGING
+}
+
+model InterviewSession {
+  id              String        @id @default(uuid())
+  userId          String
+  title           String
+  jobDescription  String
+  skills          String[]
+  experienceLevel String
+  type            InterviewType
+  scheduledAt     DateTime
+  durationMinutes Int
+  status          SessionStatus @default(DRAFT)
+
+  meetingProvider String? // GOOGLE_MEET | ZOOM | MS_TEAMS | BUILT_IN
+  meetingLink     String?
+  externalEventId String?
+
+  // Interview behaviour configuration
+  personality          InterviewerPersonality @default(FRIENDLY)
+  language             String                 @default("en-US")
+  codingEnabled        Boolean                @default(true)
+  videoAnalysisEnabled Boolean                @default(true)
+  recordingEnabled     Boolean                @default(true)
+  passMark             Int                    @default(6)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  candidates  SessionCandidate[]
+  questionSet QuestionSet?
+
+  @@index([userId, scheduledAt])
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// Candidates
+// ---------------------------------------------------------------------------
+
+model Candidate {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  mobile    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sessions SessionCandidate[]
+}
+
+enum CandidateStatus {
+  INVITED
+  JOINED
+  IN_PROGRESS
+  COMPLETED
+  ABSENT
+  CANCELLED
+}
+
+/// The join row between a candidate and a session. This is the "interview"
+/// itself: it owns the access token, transcript, report and submissions.
+model SessionCandidate {
+  id                 String          @id @default(uuid())
+  interviewSessionId String
+  candidateId        String
+  status             CandidateStatus @default(INVITED)
+
+  /// Opaque token used in the candidate-facing interview URL.
+  accessToken String @unique @default(uuid())
+
+  invitedAt   DateTime?
+  joinedAt    DateTime?
+  startedAt   DateTime?
+  completedAt DateTime?
+  absentAt    DateTime?
+
+  /// Whether identity verification during the interview succeeded.
+  identityVerified Boolean @default(false)
+
+  // --- Evaluation retries ---------------------------------------------------
+  /// How many times report generation has been attempted for this interview.
+  evaluationAttempts Int       @default(0)
+  /// Why the most recent attempt failed, shown to the recruiter.
+  evaluationError    String?
+  /// Do not retry before this moment (used to respect provider rate limits).
+  evaluationRetryAt  DateTime?
+
+  // --- Resume ---------------------------------------------------------------
+  /// Original file name, shown in the recruiter UI.
+  resumeFileName String?
+  /// The file itself. Resumes are small and are the source of record for a
+  /// hiring decision, so they live in the database rather than on a disk or a
+  /// third-party bucket that could disappear independently of the interview.
+  resumeFile     Bytes?
+  resumeMimeType String?
+  resumeSizeBytes Int?
+  /// Plain text extracted from the file, fed to question generation.
+  resumeText     String?
+  /// Structured extraction: skills, years, roles, projects, education, gaps.
+  resumeProfile  Json?
+  /// Questions written against THIS candidate's resume, spliced into the
+  /// project round on top of the session's shared job-description question set.
+  resumeQuestions Json?
+  resumeParsedAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  interviewSession InterviewSession     @relation(fields: [interviewSessionId], references: [id], onDelete: Cascade)
+  candidate        Candidate            @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  transcript       InterviewTranscript?
+  report           Report?
+  recording        Recording?
+  submissions      CodingSubmission[]
+  reminders        Reminder[]
+  insights         RealtimeInsight[]
+  videoFrames      VideoAnalysisFrame[]
+
+  @@unique([interviewSessionId, candidateId])
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// Questions
+// ---------------------------------------------------------------------------
+
+enum QuestionCategory {
+  INTRO
+  IDENTITY
+  HR
+  TECHNICAL
+  SCENARIO
+  PROJECT
+  CODING
+  CLOSING
+}
+
+enum QuestionDifficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+model QuestionSet {
+  id                 String   @id @default(uuid())
+  interviewSessionId String   @unique
+  /// Model that produced the set, for auditability.
+  generatedBy        String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  interviewSession InterviewSession @relation(fields: [interviewSessionId], references: [id], onDelete: Cascade)
+  questions        Question[]
+}
+
+model Question {
+  id             String             @id @default(uuid())
+  questionSetId  String
+  content        String
+  order          Int
+  category       QuestionCategory   @default(TECHNICAL)
+  difficulty     QuestionDifficulty @default(MEDIUM)
+  skill          String?
+  expectedAnswer String?
+  /// Category-specific payload (test cases, constraints, expected points...).
+  meta           Json?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  questionSet QuestionSet        @relation(fields: [questionSetId], references: [id], onDelete: Cascade)
+  submissions CodingSubmission[]
+
+  @@index([questionSetId, order])
+}
+
+// ---------------------------------------------------------------------------
+// Transcript
+// ---------------------------------------------------------------------------
+
+enum Speaker {
+  AI
+  CANDIDATE
+  SYSTEM
+}
+
+model InterviewTranscript {
+  id                 String   @id @default(uuid())
+  sessionCandidateId String   @unique
+  summary            String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  sessionCandidate SessionCandidate @relation(fields: [sessionCandidateId], references: [id], onDelete: Cascade)
+  turns            TranscriptTurn[]
+}
+
+model TranscriptTurn {
+  id                    String   @id @default(uuid())
+  interviewTranscriptId String
+  speaker               Speaker
+  text                  String
+  /// Question this turn belongs to, when known.
+  questionId            String?
+  round                 String?
+  /// Time between the AI finishing its turn and the candidate starting to speak.
+  latencyMs             Int?
+  /// Length of the candidate's spoken answer.
+  durationMs            Int?
+  /// ASR confidence 0..1 when the client provides it.
+  confidence            Float?
+  wordsPerMinute        Float?
+  timestamp             DateTime @default(now())
+
+  transcript InterviewTranscript @relation(fields: [interviewTranscriptId], references: [id], onDelete: Cascade)
+
+  @@index([interviewTranscriptId, timestamp])
+}
+
+// ---------------------------------------------------------------------------
+// Real-time intelligence
+// ---------------------------------------------------------------------------
+
+enum InsightType {
+  HESITATION
+  LONG_PAUSE
+  UNCLEAR_RESPONSE
+  LOW_CONFIDENCE
+  HIGH_CONFIDENCE
+  FILLER_HEAVY
+  OFF_TOPIC
+  STRONG_ANSWER
+}
+
+model RealtimeInsight {
+  id                 String      @id @default(uuid())
+  sessionCandidateId String
+  type               InsightType
+  message            String
+  /// 0..1 strength of the signal.
+  severity           Float       @default(0.5)
+  meta               Json?
+  createdAt          DateTime    @default(now())
+
+  sessionCandidate SessionCandidate @relation(fields: [sessionCandidateId], references: [id], onDelete: Cascade)
+
+  @@index([sessionCandidateId, createdAt])
+}
+
+/// Periodic client-side video metrics. The browser samples frames and posts
+/// aggregate numbers; no raw imagery leaves the candidate's machine.
+model VideoAnalysisFrame {
+  id                 String   @id @default(uuid())
+  sessionCandidateId String
+  /// Fraction of sampled frames where a face was detected (0..1).
+  facePresence       Float
+  /// Head/body movement magnitude (0..1). High = fidgeting.
+  motion             Float
+  /// How centred and steady the face is (0..1). Proxy for eye contact.
+  gazeStability      Float
+  /// Derived expression label, e.g. NEUTRAL | POSITIVE | TENSE.
+  expression         String?
+  /// Composite visual confidence for the window (0..1).
+  confidence         Float
+  capturedAt         DateTime @default(now())
+
+  sessionCandidate SessionCandidate @relation(fields: [sessionCandidateId], references: [id], onDelete: Cascade)
+
+  @@index([sessionCandidateId, capturedAt])
+}
+
+// ---------------------------------------------------------------------------
+// Coding assessment
+// ---------------------------------------------------------------------------
+
+model CodingSubmission {
+  id                 String  @id @default(uuid())
+  sessionCandidateId String
+  questionId         String?
+  language           String
+  code               String
+
+  passedCases     Int    @default(0)
+  totalCases      Int    @default(0)
+  runtimeMs       Int    @default(0)
+  /// Full execution detail: per-case results, stderr, compile errors.
+  executionResult Json?
+
+  timeComplexity  String?
+  spaceComplexity String?
+  qualityScore    Float?
+  correctnessScore Float?
+  reviewFeedback  String?
+
+  createdAt DateTime @default(now())
+
+  sessionCandidate SessionCandidate @relation(fields: [sessionCandidateId], references: [id], onDelete: Cascade)
+  question         Question?        @relation(fields: [questionId], references: [id], onDelete: SetNull)
+
+  @@index([sessionCandidateId])
+}
+
+// ---------------------------------------------------------------------------
+// Recording
+// ---------------------------------------------------------------------------
+
+model Recording {
+  id                 String   @id @default(uuid())
+  sessionCandidateId String   @unique
+
+  /// Playable URL. Cloudinary when configured, otherwise a local stream route.
+  url      String?
+  /// Cloudinary public id, needed to delete the asset later.
+  publicId String?
+  /// CLOUDINARY | LOCAL — where the bytes actually live.
+  storage  String  @default("LOCAL")
+  /// Relative path under uploads/ for locally stored recordings.
+  filePath String?
+
+  mimeType        String   @default("video/webm")
+  sizeBytes       Int      @default(0)
+  durationSeconds Int      @default(0)
+  createdAt       DateTime @default(now())
+
+  sessionCandidate SessionCandidate @relation(fields: [sessionCandidateId], references: [id], onDelete: Cascade)
+}
+
+// ---------------------------------------------------------------------------
+// Evaluation & reporting
+// ---------------------------------------------------------------------------
+
+enum HiringRecommendation {
+  STRONG_HIRE
+  HIRE
+  CONSIDER
+  REJECT
+}
+
+model Report {
+  id                 String @id @default(uuid())
+  sessionCandidateId String @unique
+
+  overallRating        Float
+  technicalScore       Float
+  communicationScore   Float
+  behavioralScore      Float
+  codingScore          Float?
+  videoConfidenceScore Float?
+
+  hiringRecommendation HiringRecommendation
+  recommendationReason String?
+
+  /// Human-readable narrative feedback for the recruiter.
+  aiFeedback String?
+  /// Narrative feedback written for the candidate.
+  candidateFeedback String?
+  summary           String?
+
+  /// Structured detail: sub-scores, strengths, weaknesses, skill breakdown,
+  /// improvements, red flags and the rule-based signal snapshot.
+  details Json?
+
+  /// Whether the automated feedback email has gone out.
+  feedbackEmailSentAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sessionCandidate SessionCandidate @relation(fields: [sessionCandidateId], references: [id], onDelete: Cascade)
+  scores           Score[]
+
+  @@index([hiringRecommendation])
+}
+
+model Score {
+  id       String  @id @default(uuid())
+  reportId String
+  /// Grouping such as Communication, Technical, Behavioral, Skill.
+  category String
+  /// Specific metric, e.g. "fluency" or a skill name.
+  label    String
+  value    Float
+  maxValue Float   @default(10)
+  evidence String?
+
+  report Report @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId, category])
+}
+
+// ---------------------------------------------------------------------------
+// Scheduling / notifications
+// ---------------------------------------------------------------------------
+
+enum ReminderKind {
+  INVITE
+  T_MINUS_24H
+  T_MINUS_1H
+  T_MINUS_5M
+  NO_SHOW_NUDGE
+  FEEDBACK
+}
+
+enum ReminderStatus {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED
+}
+
+model Reminder {
+  id                 String         @id @default(uuid())
+  sessionCandidateId String
+  kind               ReminderKind
+  status             ReminderStatus @default(PENDING)
+  scheduledFor       DateTime
+  sentAt             DateTime?
+  error              String?
+  attempts           Int            @default(0)
+  createdAt          DateTime       @default(now())
+
+  sessionCandidate SessionCandidate @relation(fields: [sessionCandidateId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionCandidateId, kind])
+  @@index([status, scheduledFor])
+}
+
+// ---------------------------------------------------------------------------
+// ATS integration
+// ---------------------------------------------------------------------------
+
+enum AtsProvider {
+  GREENHOUSE
+  LEVER
+  WORKABLE
+  WEBHOOK
+}
+
+model AtsIntegration {
+  id        String      @id @default(uuid())
+  userId    String
+  provider  AtsProvider
+  name      String
+  webhookUrl String?
+  apiKey    String?
+  enabled   Boolean     @default(true)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  syncLogs  AtsSyncLog[]
+
+  @@index([userId])
+}
+
+model AtsSyncLog {
+  id               String   @id @default(uuid())
+  atsIntegrationId String
+  reportId         String?
+  success          Boolean
+  responseStatus   Int?
+  message          String?
+  createdAt        DateTime @default(now())
+
+  integration AtsIntegration @relation(fields: [atsIntegrationId], references: [id], onDelete: Cascade)
+
+  @@index([atsIntegrationId, createdAt])
+}

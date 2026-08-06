@@ -1,0 +1,128 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Light, paper-like surface with a calm indigo accent. */
+    --background: 210 40% 98%;
+    --surface: 0 0% 100%;
+    --foreground: 222 47% 11%;
+
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+
+    --primary: 243 75% 59%;
+    --primary-hover: 245 58% 51%;
+    --primary-soft: 244 100% 97%;
+    --primary-foreground: 0 0% 100%;
+
+    --success: 142 71% 36%;
+    --success-soft: 138 76% 96%;
+    --warning: 32 95% 44%;
+    --warning-soft: 48 96% 95%;
+    --danger: 0 72% 51%;
+    --danger-soft: 0 86% 97%;
+    --info: 217 91% 55%;
+    --info-soft: 214 95% 96%;
+
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 243 75% 59%;
+
+    --radius: 0.625rem;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    /* Nothing in this app is meant to scroll sideways at the page level. */
+    overflow-x: hidden;
+  }
+
+  /*
+   * iOS Safari counts its collapsing toolbar in 100vh, so a full-height panel
+   * ends up taller than the visible area and its footer sits off screen. dvh
+   * tracks the actual viewport; vh stays as the fallback for older browsers.
+   */
+  .h-dscreen {
+    height: 100vh;
+    height: 100dvh;
+  }
+
+  .min-h-dscreen {
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+
+  /* Inputs below 16px make iOS zoom in when they receive focus. */
+  @media (max-width: 640px) {
+    input,
+    select,
+    textarea {
+      font-size: 16px;
+    }
+  }
+
+  /* Consistent focus ring everywhere, including custom controls. */
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+
+  ::selection {
+    @apply bg-primary/15;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-lg border border-border bg-surface shadow-card;
+  }
+
+  .label {
+    @apply block text-sm font-medium text-foreground;
+  }
+
+  .hint {
+    @apply text-xs text-muted-foreground;
+  }
+
+  /* Scrollable regions inside cards keep the page from scrolling sideways. */
+  .scroll-area {
+    @apply overflow-y-auto overscroll-contain;
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+
+  .scroll-area::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .scroll-area::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-border;
+  }
+
+  .scroll-area::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* Long tables and code blocks scroll inside their own box. */
+  .overflow-guard {
+    @apply w-full overflow-x-auto;
+  }
+}

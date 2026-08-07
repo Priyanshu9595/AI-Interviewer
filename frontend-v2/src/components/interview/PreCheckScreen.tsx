@@ -151,7 +151,7 @@ export function PreCheckScreen({
     if (recordingEnabled) {
       try {
         screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
-      } catch (err) {
+      } catch {
         console.warn('Screen sharing was denied');
       }
     }

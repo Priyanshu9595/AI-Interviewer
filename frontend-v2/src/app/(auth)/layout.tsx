@@ -5,10 +5,10 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
   return (
     <div className="flex min-h-screen">
       {/* Left side */}
-      <div className="hidden lg:flex w-[45%] flex-col justify-between bg-sky-500 p-12 text-white">
+      <div className="hidden lg:flex w-[45%] flex-col justify-between bg-blue-600 p-12 text-white">
         <div>
           <Link href="/" className="flex items-center gap-2 text-white">
-            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-white text-base font-bold text-sky-600">
+            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-white text-base font-bold text-blue-600">
               <Brain className="h-5 w-5" />
             </div>
             <span className="text-xl font-bold tracking-tight">AI Interview</span>

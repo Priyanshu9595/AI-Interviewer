@@ -29,13 +29,6 @@ interface ConfigOptions {
   experienceLevels: string[];
 }
 
-const PROVIDER_LABELS: Record<string, string> = {
-  BUILT_IN: 'Built-in interview room',
-  GOOGLE_MEET: 'Google Meet',
-  ZOOM: 'Zoom',
-  MS_TEAMS: 'Microsoft Teams',
-};
-
 /** Default to tomorrow morning rather than a time already in the past. */
 function defaultSchedule() {
   const d = new Date();

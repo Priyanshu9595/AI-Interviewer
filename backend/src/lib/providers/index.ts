@@ -49,7 +49,7 @@ export async function createMeeting(
         }
       }
     }
-  } else if (requested && requested !== 'BUILT_IN') {
+  } else if (requested) {
     console.warn(`[meeting] ${requested} is not configured, using built-in room`);
   }
 

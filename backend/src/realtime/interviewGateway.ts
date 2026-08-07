@@ -5,7 +5,7 @@ import { InterviewStateMachine } from '../services/InterviewStateMachine';
 import { evaluateJoinGate } from '../services/JoinGate';
 import { InsightService } from '../services/InsightService';
 import { RecordingService } from '../services/RecordingService';
-import { SpeechSession, SpeechResult, deepgramConfigured } from '../services/SpeechService';
+import { SpeechSession, SpeechResult, deepgramConfigured, getSpeechStatus } from '../services/SpeechService';
 
 interface Room {
   machine: InterviewStateMachine;
@@ -234,6 +234,10 @@ async function openRoom(nsp: Nsp, socket: Socket, token: string): Promise<Room |
     state: room.machine.state,
     candidateName: sc.candidate?.name,
   });
+
+  if (getSpeechStatus() !== 'ok') {
+    socket.emit('speech_unavailable', {});
+  }
 
   return room;
 }

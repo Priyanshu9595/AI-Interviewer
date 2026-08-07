@@ -24,7 +24,7 @@ function socketUrl(language: string): string {
     interim_results: 'true',
     // Let Deepgram decide when a turn is over rather than a fixed client timer.
     endpointing: '800',
-    utterance_end_ms: '1500',
+    utterance_end_ms: '3000',
     vad_events: 'true',
   });
 

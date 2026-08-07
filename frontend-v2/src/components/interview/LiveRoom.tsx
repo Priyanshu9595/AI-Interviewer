@@ -128,7 +128,7 @@ export function LiveRoom({
 
   const listener = useListener({
     language,
-    silenceMs: 2600,
+    silenceMs: 3000,
     onFinal: handleAnswer,
     onSilenceTimeout: () => socketRef.current?.emit('silence_timeout'),
   });
@@ -441,6 +441,13 @@ export function LiveRoom({
   useEffect(() => {
     if (phase === 'connecting' && socketRef.current?.connected) setPhase('greeting');
   }, [phase]);
+
+  // Start the browser recogniser if server transcription fails mid-turn.
+  useEffect(() => {
+    if (!useServerSpeech && phase === 'listening' && !listener.listening) {
+      listener.start();
+    }
+  }, [useServerSpeech, phase, listener]);
 
   // --- Actions ----------------------------------------------------------
 

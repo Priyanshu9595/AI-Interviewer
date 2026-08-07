@@ -239,8 +239,8 @@ Return JSON: { technical{knowledge,problemSolving,logicalThinking,projectUnderst
       session.type === 'HR'
         ? { technical: 0.15, communication: 0.4, behavioral: 0.4, coding: 0, video: 0.05 }
         : session.type === 'TECHNICAL'
-          ? { technical: 0.5, communication: 0.2, behavioral: 0.1, coding: 0.15, video: 0.05 }
-          : { technical: 0.35, communication: 0.25, behavioral: 0.2, coding: 0.15, video: 0.05 };
+          ? { technical: 0.2, communication: 0.15, behavioral: 0.1, coding: 0.5, video: 0.05 }
+          : { technical: 0.15, communication: 0.2, behavioral: 0.1, coding: 0.5, video: 0.05 };
 
     // Redistribute weight from any dimension we could not measure.
     let usable = weights.communication;

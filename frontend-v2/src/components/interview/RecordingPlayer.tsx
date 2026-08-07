@@ -100,9 +100,9 @@ export function RecordingPlayer({ sessionCandidateId }: { sessionCandidateId: st
       </div>
 
       {info.storage === 'LOCAL' && (
-        <Alert tone="info">
-          This file is on the server&apos;s local disk and will not survive a redeploy. Configure Cloudinary to store
-          recordings durably.
+        <Alert tone="warning" title="Stored on the server's local disk">
+          This recording will not survive a redeploy. Set the Cloudinary credentials, and make sure the API key has the
+          upload (&quot;create&quot;) permission enabled.
         </Alert>
       )}
     </div>

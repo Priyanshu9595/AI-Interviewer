@@ -16,6 +16,7 @@ import { CodingChallenge, CodingPanel } from '@/components/interview/CodingPanel
 import { VoiceOrb } from '@/components/interview/VoiceOrb';
 import { Alert, Badge, Button, Card, CardBody, Input } from '@/components/ui';
 import { useAudioStreamer } from '@/hooks/useAudioStreamer';
+import { useProctoring } from '@/hooks/useProctoring';
 import { useListener, useSpeaker } from '@/hooks/useSpeech';
 import { FrameMetrics, useVideoAnalysis } from '@/hooks/useVideoAnalysis';
 import { API_BASE, api } from '@/lib/api';
@@ -85,6 +86,7 @@ export function LiveRoom({
   // Deepgram runs server-side; the browser recogniser is the fallback.
   const [useServerSpeech, setUseServerSpeech] = useState(true);
   const [serverInterim, setServerInterim] = useState('');
+  const [endedReason, setEndedReason] = useState<string | null>(null);
 
   const socketRef = useRef<Socket | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -144,7 +146,17 @@ export function LiveRoom({
   const audioStreamer = useAudioStreamer({
     socket: socketReady,
     stream: micStream,
-    enabled: useServerSpeech && phase === 'listening',
+    // Runs for the whole interview; restarting it per turn corrupts the stream.
+    enabled: useServerSpeech && phase !== 'connecting' && phase !== 'ended',
+    // Only what the candidate says while the interviewer is waiting counts.
+    accepting: phase === 'listening',
+  });
+
+  // Cannot truly prevent tab switching — no web page can — but it is noticed,
+  // warned about, and recorded for the recruiter.
+  const proctoring = useProctoring({
+    socket: socketReady,
+    active: phase !== 'connecting' && phase !== 'ended',
   });
 
   const { stats: videoStats } = useVideoAnalysis({
@@ -386,8 +398,9 @@ export function LiveRoom({
       }
     });
 
-    socket.on('interview_ended', () => {
+    socket.on('interview_ended', (data: { reason?: string }) => {
       endedRef.current = true;
+      setEndedReason(data?.reason ?? null);
       listener.stop();
       stopSpeaking();
       setPhase('ended');
@@ -488,7 +501,7 @@ export function LiveRoom({
     ended: 'Interview complete',
   };
 
-  const isListening = useServerSpeech ? audioStreamer.streaming : listener.listening;
+  const isListening = useServerSpeech ? phase === 'listening' && audioStreamer.streaming : listener.listening;
   const interim = useServerSpeech ? serverInterim : listener.interim;
   const overTime = elapsed > durationMinutes * 60;
 
@@ -527,6 +540,14 @@ export function LiveRoom({
       {connectionError && (
         <div className="shrink-0 px-4 pt-3">
           <Alert tone="danger">{connectionError}</Alert>
+        </div>
+      )}
+
+      {proctoring.warning && (
+        <div className="shrink-0 px-3 pt-3 sm:px-4">
+          <Alert tone="warning" title="Stay on this tab">
+            {proctoring.warning}
+          </Alert>
         </div>
       )}
 
@@ -715,10 +736,13 @@ export function LiveRoom({
               <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-success-soft">
                 <Sparkles className="h-5 w-5 text-success" />
               </div>
-              <h2 className="mt-4 text-lg font-semibold">Interview complete</h2>
+              <h2 className="mt-4 text-lg font-semibold">
+                {endedReason === 'abandoned' ? 'Interview ended early' : 'Interview complete'}
+              </h2>
               <p className="mt-1.5 text-sm text-muted-foreground">
-                Thank you for your time, {candidateName.split(' ')[0]}. Your responses are being evaluated and the
-                hiring team will be in touch.
+                {endedReason === 'abandoned'
+                  ? `This interview was ended before ${interviewerName} finished, so it has been recorded as incomplete. Please contact the recruiter if you would like to be rescheduled.`
+                  : `Thank you for your time, ${candidateName.split(' ')[0]}. Your responses are being evaluated and the hiring team will be in touch.`}
               </p>
               <p className="mt-3 text-xs text-muted-foreground">You can close this window.</p>
             </CardBody>

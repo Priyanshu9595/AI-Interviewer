@@ -25,7 +25,9 @@
     "verify:ratelimit": "tsx scripts/ratelimittest.ts",
     "diagnose": "tsx scripts/diagnose.ts",
     "verify:speech": "tsx scripts/speechtest.ts",
-    "verify:resumedb": "tsx scripts/resumedbtest.ts"
+    "verify:resumedb": "tsx scripts/resumedbtest.ts",
+    "verify:incomplete": "tsx scripts/incompletetest.ts",
+    "cloudcheck": "tsx scripts/cloudcheck.ts"
   },
   "keywords": [],
   "author": "",

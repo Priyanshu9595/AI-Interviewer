@@ -110,7 +110,12 @@ enum CandidateStatus {
   INVITED
   JOINED
   IN_PROGRESS
+  /// The AI interviewer took the candidate all the way to the closing round.
+  /// Only this status produces a score.
   COMPLETED
+  /// The candidate left before the interviewer finished. Not scored, because a
+  /// partial interview cannot be judged fairly against a full one.
+  INCOMPLETE
   ABSENT
   CANCELLED
 }

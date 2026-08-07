@@ -6,18 +6,27 @@ import type { Socket } from 'socket.io-client';
 /**
  * Streams microphone audio to our own server, which relays it to Deepgram.
  *
- * The transcription key stays server-side — a browser-held key is trivially
- * extractable from the network tab. The server sends interim and final
- * transcripts back over the same interview socket.
+ * The recorder runs **continuously** for the whole interview and is never
+ * restarted between turns. MediaRecorder emits a WebM container header on its
+ * first chunk only, so stopping and starting it mid-session pushes a second
+ * header into a stream Deepgram is already parsing — after which it stops
+ * returning transcripts entirely. Whether the candidate's speech counts as an
+ * answer is decided by the server, not by muting the microphone.
+ *
+ * The transcription key stays server-side; a browser-held key is trivially
+ * lifted from the network tab.
  */
 export function useAudioStreamer({
   socket,
   stream,
   enabled,
+  /** True only while the interviewer is waiting for an answer. */
+  accepting,
 }: {
   socket: Socket | null;
   stream: MediaStream | null;
   enabled: boolean;
+  accepting: boolean;
 }) {
   const recorderRef = useRef<MediaRecorder | null>(null);
   const [streaming, setStreaming] = useState(false);
@@ -37,15 +46,15 @@ export function useAudioStreamer({
     setStreaming(false);
   }, []);
 
-  const start = useCallback(() => {
-    if (!socket || !stream || recorderRef.current) return;
+  // One recorder for the whole interview.
+  useEffect(() => {
+    if (!enabled || !socket || !stream || recorderRef.current) return;
 
     if (typeof MediaRecorder === 'undefined') {
       setSupported(false);
       return;
     }
 
-    // Deepgram accepts Opus in a WebM container directly.
     const mimeType = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus'].find((t) =>
       MediaRecorder.isTypeSupported(t),
     );
@@ -55,7 +64,7 @@ export function useAudioStreamer({
       return;
     }
 
-    // Audio only: the recorder for the saved video is a separate instance.
+    // Audio only: the video recording uses its own recorder instance.
     const audioOnly = new MediaStream(stream.getAudioTracks());
     const recorder = new MediaRecorder(audioOnly, { mimeType, audioBitsPerSecond: 32_000 });
 
@@ -69,18 +78,30 @@ export function useAudioStreamer({
     recorderRef.current = recorder;
     setStreaming(true);
 
-    socket.emit('turn_started');
-  }, [socket, stream]);
+    return () => {
+      if (recorder.state !== 'inactive') {
+        try {
+          recorder.stop();
+        } catch {
+          /* already stopping */
+        }
+      }
+      recorderRef.current = null;
+      setStreaming(false);
+    };
+  }, [enabled, socket, stream]);
 
+  /**
+   * Tells the server whether what it hears should be treated as an answer.
+   * Gating here rather than by stopping the recorder keeps the audio stream
+   * intact and stops the interviewer's own voice being transcribed as a reply.
+   */
   useEffect(() => {
-    if (enabled) start();
-    else stop();
-  }, [enabled, start, stop]);
+    if (!socket?.connected) return;
+    socket.emit(accepting ? 'listening_started' : 'listening_stopped');
+  }, [socket, accepting]);
 
   useEffect(() => stop, [stop]);
 
-  /** Tells the server a fresh answer is beginning, so latency stays accurate. */
-  const markTurnStart = useCallback(() => socket?.emit('turn_started'), [socket]);
-
-  return { streaming, supported, start, stop, markTurnStart };
+  return { streaming, supported, stop };
 }

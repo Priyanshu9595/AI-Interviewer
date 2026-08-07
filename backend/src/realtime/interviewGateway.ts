@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma';
 import { EvaluationQueue } from '../services/EvaluationQueue';
 import { InterviewStateMachine } from '../services/InterviewStateMachine';
 import { evaluateJoinGate } from '../services/JoinGate';
+import { InsightService } from '../services/InsightService';
 import { RecordingService } from '../services/RecordingService';
 import { SpeechSession, SpeechResult, deepgramConfigured } from '../services/SpeechService';
 
@@ -15,6 +16,12 @@ interface Room {
   speech: SpeechSession | null;
   /** When the candidate's current turn began, for latency measurement. */
   turnStartedAt: number;
+  /**
+   * Whether speech heard right now counts as an answer. Audio streams
+   * continuously, so this — not muting — is what stops the interviewer's own
+   * voice being transcribed back as the candidate's reply.
+   */
+  acceptingAnswers: boolean;
   roomId: string;
   /** Interview language, used for the transcription model. */
   language: string;
@@ -115,8 +122,32 @@ export function configureInterviewGateway(io: Server) {
       });
     });
 
-    /** The client marks when it started capturing, so latency stays accurate. */
-    socket.on('turn_started', () => withRoom((room) => void (room.turnStartedAt = Date.now())));
+    socket.on('listening_started', () =>
+      withRoom((room) => {
+        room.acceptingAnswers = true;
+        room.turnStartedAt = Date.now();
+      }),
+    );
+
+    socket.on('listening_stopped', () => withRoom((room) => void (room.acceptingAnswers = false)));
+
+    /** Proctoring: the candidate left the tab, or tried to copy or paste. */
+    socket.on('proctoring_event', (payload: { type?: string; detail?: string; awayMs?: number }) =>
+      withRoom(async (room) => {
+        const type = String(payload?.type ?? 'UNKNOWN');
+        const detail = String(payload?.detail ?? '').slice(0, 200);
+        const awayMs = Number(payload?.awayMs ?? 0);
+
+        // A long absence is more suspicious than a brief one.
+        const severity = type === 'TAB_SWITCH' ? Math.min(1, 0.4 + awayMs / 60_000) : 0.5;
+
+        await InsightService.record(room.roomId, [
+          { type: 'OFF_TOPIC', message: `Proctoring: ${detail}`, severity, meta: { proctoring: type, awayMs } },
+        ]).catch(() => {});
+
+        nsp.to(room.roomId).emit('insight', { type: 'PROCTORING', message: detail, severity });
+      }),
+    );
 
     socket.on('end_interview', () => withRoom((room) => room.machine.candidateLeft()));
 
@@ -184,6 +215,7 @@ async function openRoom(nsp: Nsp, socket: Socket, token: string): Promise<Room |
       disconnectTimer: null,
       speech: null,
       turnStartedAt: Date.now(),
+      acceptingAnswers: false,
       roomId,
       language: sc.interviewSession.language,
     };
@@ -242,6 +274,15 @@ function createSpeechSession(nsp: Nsp, room: Room): SpeechSession {
     const text = pending.trim();
     if (!text) return;
 
+    if (!room.acceptingAnswers) {
+      // Heard while the interviewer was speaking or thinking — most likely the
+      // AI's own voice through the candidate's speakers. Discard it.
+      pending = '';
+      confidenceSum = 0;
+      finalCount = 0;
+      return;
+    }
+
     const confidence = finalCount ? confidenceSum / finalCount : 0.9;
     const now = Date.now();
 
@@ -299,10 +340,10 @@ function wireMachine(nsp: Nsp, roomId: string, machine: InterviewStateMachine) {
         .catch((err) => console.error(`[recording] finalise failed for ${roomId}:`, err.message));
     }, 4000);
 
-    // Evaluate in the background. A no-show has nothing to evaluate.
-    // Failures are recorded and retried by the scheduler rather than lost, so a
-    // completed interview always ends up with a report eventually.
-    if (data.reason !== 'no_show') {
+    // Only a full interview is scored. A no-show has nothing to evaluate, and
+    // an abandoned one cannot be judged fairly against candidates who finished.
+    // Failures are recorded and retried by the scheduler rather than lost.
+    if (data.reason === 'completed' || data.reason === 'ended_early') {
       void EvaluationQueue.run(roomId).then((ok) => {
         if (ok) nsp.to(roomId).emit('report_ready', { sessionCandidateId: roomId });
       });

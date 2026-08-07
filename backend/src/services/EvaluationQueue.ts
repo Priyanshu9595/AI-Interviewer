@@ -106,6 +106,7 @@ export class EvaluationQueue {
 
     const pending = await prisma.sessionCandidate.findMany({
       where: {
+        // INCOMPLETE interviews are deliberately never scored.
         status: 'COMPLETED',
         report: null,
         // There must be something to evaluate.

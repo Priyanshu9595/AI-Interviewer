@@ -226,6 +226,7 @@ export const STATUS_TONE: Record<string, BadgeTone> = {
   INVITED: 'info',
   JOINED: 'primary',
   IN_PROGRESS: 'primary',
+  INCOMPLETE: 'warning',
   ABSENT: 'danger',
   STRONG_HIRE: 'success',
   HIRE: 'success',

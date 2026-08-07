@@ -16,6 +16,8 @@ export type InterviewState =
   | 'CODING'
   | 'CLOSING'
   | 'COMPLETED'
+  /// The candidate left before the interviewer finished. Never scored.
+  | 'INCOMPLETE'
   | 'ABSENT';
 
 /** Events the machine emits back to the socket layer. */
@@ -255,7 +257,7 @@ export class InterviewStateMachine extends EventEmitter {
     durationMs?: number;
     confidence?: number;
   }) {
-    if (this.busy || this.state === 'COMPLETED' || this.state === 'ABSENT') return;
+    if (this.busy || this.state === 'COMPLETED' || this.state === 'INCOMPLETE' || this.state === 'ABSENT') return;
     this.busy = true;
     this.emit('thinking', { active: true });
 
@@ -322,7 +324,7 @@ export class InterviewStateMachine extends EventEmitter {
 
   /** The candidate went quiet for a long time without answering. */
   async silenceDetected() {
-    if (this.busy || this.state === 'COMPLETED' || this.state === 'ABSENT') return;
+    if (this.busy || this.state === 'COMPLETED' || this.state === 'INCOMPLETE' || this.state === 'ABSENT') return;
 
     await InsightService.record(this.sessionCandidateId, [
       { type: 'LONG_PAUSE', message: 'Went silent without answering.', severity: 0.6 },
@@ -336,7 +338,7 @@ export class InterviewStateMachine extends EventEmitter {
   }
 
   async candidateLeft() {
-    if (this.state === 'COMPLETED' || this.state === 'ABSENT') return;
+    if (this.state === 'COMPLETED' || this.state === 'INCOMPLETE' || this.state === 'ABSENT') return;
     await this.finish('abandoned');
   }
 
@@ -543,29 +545,55 @@ export class InterviewStateMachine extends EventEmitter {
     });
   }
 
+  /**
+   * Ends the interview.
+   *
+   * Only an interview the AI carried through to its closing round counts as
+   * COMPLETED and earns a score. A candidate who cuts it short is recorded as
+   * INCOMPLETE: a partial interview cannot be scored fairly against a full one,
+   * and a low score caused by walking out would misrepresent them.
+   *
+   * `ended_early` is the exception — the interviewer itself chose to stop (the
+   * candidate was unwell or asked to stop), so it is closed off properly.
+   */
   private async finish(reason: 'completed' | 'abandoned' | 'ended_early') {
-    if (this.state === 'COMPLETED') return;
+    if (this.state === 'COMPLETED' || this.state === 'INCOMPLETE') return;
 
     this.clearWaitTimers();
     if (this.hardStopTimer) clearTimeout(this.hardStopTimer);
 
-    if (reason === 'completed' || reason === 'ended_early') {
+    const interviewerFinished = reason === 'completed' || reason === 'ended_early';
+
+    if (interviewerFinished) {
       await this.say(this.interviewer?.closing() ?? 'Thank you for your time today. Goodbye.', {
         round: 'CLOSING',
         expectsAnswer: false,
       });
     }
 
-    this.state = 'COMPLETED';
+    this.state = interviewerFinished ? 'COMPLETED' : 'INCOMPLETE';
 
     await prisma.sessionCandidate
       .update({
         where: { id: this.sessionCandidateId },
-        data: { status: 'COMPLETED', completedAt: new Date() },
+        data: interviewerFinished
+          ? { status: 'COMPLETED', completedAt: new Date() }
+          : {
+              status: 'INCOMPLETE',
+              // Recorded so the recruiter can see how far they got.
+              completedAt: new Date(),
+            },
       })
       .catch((e) => console.error('[interview] completion write failed:', e.message));
 
-    this.emit('state', { state: this.state, progress: 100 });
+    if (!interviewerFinished) {
+      const answered = this.index + 1;
+      console.log(
+        `[interview] ${this.sessionCandidateId} left after ${answered}/${this.questions.length} questions — marked INCOMPLETE, not scored`,
+      );
+    }
+
+    this.emit('state', { state: this.state, progress: this.progress() });
 
     // Give the client a beat to finish speaking the closing line.
     setTimeout(() => this.emit('ended', { reason }), 1500);

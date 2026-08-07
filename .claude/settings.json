@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx prisma *)",
+      "Bash(python -)",
+      "Bash(echo \"TS=$?\")",
+      "Bash(npx tsx *)",
+      "Bash(npx next *)",
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(npm run *)"
+    ]
+  }
+}

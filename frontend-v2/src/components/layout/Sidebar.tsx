@@ -10,7 +10,6 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
-  Plug,
   Users,
   Video,
   X,
@@ -25,7 +24,6 @@ const NAV = [
   { href: '/reports', label: 'Reports', icon: FileText },
   { href: '/recordings', label: 'Recordings', icon: Video },
   { href: '/analytics', label: 'Analytics', icon: BarChart3 },
-  { href: '/integrations', label: 'Integrations', icon: Plug },
 ];
 
 export function Sidebar() {

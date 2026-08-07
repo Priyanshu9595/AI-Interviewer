@@ -331,7 +331,7 @@ export const getRecording = async (req: AuthRequest, res: Response) => {
 
   const url =
     recording.storage === 'CLOUDINARY' && recording.url
-      ? recording.url
+      ? recording.url.replace(/\.webm$/i, '.mp4')
       : `${env.API_URL}/api/recordings/${signPlaybackToken(recording.id)}`;
 
   res.json({
@@ -360,7 +360,7 @@ export const streamRecording = async (req: Request, res: Response) => {
   const recording = await prisma.recording.findUnique({ where: { id: recordingId } });
   if (!recording) throw notFound('Recording not found');
 
-  if (recording.storage === 'CLOUDINARY' && recording.url) return res.redirect(recording.url);
+  if (recording.storage === 'CLOUDINARY' && recording.url) return res.redirect(recording.url.replace(/\.webm$/i, '.mp4'));
   if (!recording.filePath) throw notFound('This recording has no stored file');
 
   // Reject any path that escapes the uploads directory.

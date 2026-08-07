@@ -44,7 +44,7 @@ export const register = async (req: AuthRequest, res: Response) => {
   const user = await prisma.user.create({
     data: {
       email: data.email,
-      password: await bcrypt.hash(data.password, 12),
+      password: await bcrypt.hash(data.password, 10),
       name: data.name ?? null,
       company: data.company ?? null,
     },
@@ -62,7 +62,7 @@ export const login = async (req: AuthRequest, res: Response) => {
   const user = await prisma.user.findUnique({ where: { email: data.email } });
   // Compare against a dummy hash when the user is missing so the response time
   // does not reveal whether the address is registered.
-  const hash = user?.password ?? '$2a$12$invalidinvalidinvalidinvalidinvalidinvalidinvalidinvalidi';
+  const hash = user?.password ?? '$2a$10$invalidinvalidinvalidinvalidinvalidinvalidinvalidinvalidi';
   const ok = await bcrypt.compare(data.password, hash);
 
   if (!user || !ok) throw unauthorized('Incorrect email or password');

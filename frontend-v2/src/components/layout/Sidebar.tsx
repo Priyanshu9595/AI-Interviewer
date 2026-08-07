@@ -43,8 +43,8 @@ export function Sidebar() {
           className={cn(
             'flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors',
             isActive(href)
-              ? 'bg-primary-soft text-primary'
-              : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+              ? 'bg-indigo-500/15 text-indigo-400'
+              : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100',
           )}
         >
           <Icon className="h-4 w-4 shrink-0" />
@@ -55,7 +55,7 @@ export function Sidebar() {
   );
 
   const footer = user && (
-    <div className="border-t border-border p-3">
+    <div className="border-t border-slate-800 p-3">
       <div className="flex items-center gap-2.5 rounded-md px-2 py-1.5">
         <div
           className={cn(
@@ -66,12 +66,12 @@ export function Sidebar() {
           {initials(user.name ?? user.email)}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-foreground">{user.name ?? 'Recruiter'}</p>
-          <p className="truncate text-xs text-muted-foreground">{user.email}</p>
+          <p className="truncate text-sm font-medium text-slate-200">{user.name ?? 'Recruiter'}</p>
+          <p className="truncate text-xs text-slate-400">{user.email}</p>
         </div>
         <button
           onClick={() => void logout()}
-          className="shrink-0 rounded p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          className="shrink-0 rounded p-1.5 text-slate-400 transition-colors hover:bg-slate-800 hover:text-slate-100"
           aria-label="Sign out"
           title="Sign out"
         >
@@ -82,11 +82,11 @@ export function Sidebar() {
   );
 
   const brand = (
-    <Link href="/dashboard" className="flex items-center gap-2 border-b border-border px-5 py-4">
+    <Link href="/dashboard" className="flex items-center gap-2 border-b border-slate-800 px-5 py-4">
       <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-sm font-bold text-primary-foreground">
         A
       </div>
-      <span className="text-sm font-semibold tracking-tight text-foreground">AI Interview</span>
+      <span className="text-sm font-semibold tracking-tight text-white">AI Interview</span>
     </Link>
   );
 
@@ -113,10 +113,10 @@ export function Sidebar() {
       {open && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <div className="absolute inset-0 bg-foreground/25" onClick={() => setOpen(false)} aria-hidden />
-          <aside className="relative flex h-full w-72 flex-col bg-surface shadow-pop">
-            <div className="flex items-center justify-between border-b border-border pr-2">
+          <aside className="relative flex h-full w-72 flex-col bg-slate-950 text-slate-100 shadow-pop">
+            <div className="flex items-center justify-between border-b border-slate-800 pr-2">
               <div className="flex-1">{brand}</div>
-              <button onClick={() => setOpen(false)} className="rounded-md p-2 hover:bg-muted" aria-label="Close">
+              <button onClick={() => setOpen(false)} className="rounded-md p-2 hover:bg-slate-800 text-slate-400 hover:text-slate-100" aria-label="Close">
                 <X className="h-5 w-5" />
               </button>
             </div>
@@ -127,7 +127,7 @@ export function Sidebar() {
       )}
 
       {/* Desktop rail */}
-      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-border bg-surface lg:flex">
+      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-slate-800 bg-slate-950 text-slate-100 lg:flex">
         {brand}
         {nav}
         {footer}

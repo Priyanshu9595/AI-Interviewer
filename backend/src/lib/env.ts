@@ -14,7 +14,7 @@ const envSchema = z.object({
   JWT_REFRESH_SECRET: z.string().min(10),
 
   // Public URLs used when building candidate links inside emails.
-  APP_URL: z.string().default('http://localhost:3000'),
+  APP_URL: z.string().default('https://ai-interviewer-xi-nine.vercel.app'),
   API_URL: z.string().default('http://localhost:5000'),
 
   // LLM provider. Groq is the default because it is fast enough for a live

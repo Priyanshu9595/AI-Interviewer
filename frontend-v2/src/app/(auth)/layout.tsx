@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { Brain } from 'lucide-react';
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -8,7 +9,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         <div>
           <Link href="/" className="flex items-center gap-2 text-white">
             <div className="flex h-8 w-8 items-center justify-center rounded-md bg-white text-base font-bold text-sky-600">
-              A
+              <Brain className="h-5 w-5" />
             </div>
             <span className="text-xl font-bold tracking-tight">AI Interview</span>
           </Link>

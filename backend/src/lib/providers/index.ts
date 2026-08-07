@@ -36,6 +36,19 @@ export async function createMeeting(
     } catch (err) {
       console.warn(`[meeting] ${provider.name} failed, using built-in room:`, (err as Error).message);
     }
+  } else if (requested === 'BUILT_IN') {
+    // If built-in is requested, we STILL want to create a calendar event automatically 
+    // on Google Meet, Zoom, or Teams if they are configured, so the recruiter's calendar is blocked.
+    const autoProviders: MeetingProviderName[] = ['GOOGLE_MEET', 'ZOOM', 'MS_TEAMS'];
+    for (const p of autoProviders) {
+      if (registry[p].isConfigured()) {
+        try {
+          return await registry[p].createMeeting(title, scheduledAt, durationMinutes);
+        } catch (err) {
+          console.warn(`[meeting] Auto ${p} failed, trying next:`, (err as Error).message);
+        }
+      }
+    }
   } else if (requested && requested !== 'BUILT_IN') {
     console.warn(`[meeting] ${requested} is not configured, using built-in room`);
   }

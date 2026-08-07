@@ -264,20 +264,7 @@ export default function NewSessionPage() {
               </Select>
             </Field>
 
-            <Field
-              label="Meeting link"
-              className="sm:col-span-3"
-              hint="Unconfigured providers fall back to the built-in room, which is the only one where the AI can actually speak with the candidate."
-            >
-              <Select value={form.meetingProvider} onChange={(e) => set('meetingProvider', e.target.value)}>
-                {(config?.providers ?? [{ name: 'BUILT_IN', configured: true }]).map((p) => (
-                  <option key={p.name} value={p.name}>
-                    {PROVIDER_LABELS[p.name] ?? p.name}
-                    {!p.configured && p.name !== 'BUILT_IN' ? ' — not configured' : ''}
-                  </option>
-                ))}
-              </Select>
-            </Field>
+
           </CardBody>
         </Card>
 

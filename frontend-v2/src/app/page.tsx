@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ArrowRight, Check } from 'lucide-react';
+import { ArrowRight, Check, Brain } from 'lucide-react';
 import { HeroVisual } from '@/components/marketing/HeroVisual';
 
 /**
@@ -49,8 +49,8 @@ export default function LandingPage() {
       <header className="sticky top-0 z-40 border-b border-border bg-background/85 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3.5 sm:px-6">
           <div className="flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-sm font-bold text-primary-foreground">
-              A
+            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
+              <Brain className="h-4 w-4" />
             </div>
             <span className="text-sm font-semibold tracking-tight">AI Interview</span>
           </div>
@@ -167,17 +167,17 @@ export default function LandingPage() {
       </section>
 
       {/* CTA */}
-      <section className="border-t border-border bg-primary py-16 sm:py-20">
+      <section className="border-t border-border bg-surface py-16 sm:py-20">
         <div className="mx-auto max-w-2xl px-4 text-center sm:px-6">
-          <h2 className="text-2xl font-semibold tracking-tight text-primary-foreground sm:text-3xl">
+          <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
             Ready to run your first round?
           </h2>
-          <p className="mt-3 text-primary-foreground/80">
+          <p className="mt-3 text-muted-foreground">
             Set up a session in a couple of minutes and send the first invitation today.
           </p>
           <Link
             href="/register"
-            className="mt-8 inline-flex h-11 items-center gap-2 rounded-md bg-surface px-6 text-sm font-medium text-primary shadow-card transition-opacity hover:opacity-90"
+            className="mt-8 inline-flex h-11 items-center gap-2 rounded-md bg-primary px-6 text-sm font-medium text-primary-foreground shadow-card transition-opacity hover:opacity-90"
           >
             Get started
             <ArrowRight className="h-4 w-4" />

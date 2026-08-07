@@ -33,6 +33,7 @@ export class ZoomProvider implements IMeetingProvider {
         start_time: scheduledAt.toISOString(),
         duration: durationMinutes,
         timezone: 'UTC',
+        agenda: `AI-conducted interview session.\n\nView details or join via the dashboard: ${env.APP_URL}/sessions`,
         settings: { join_before_host: true, waiting_room: false },
       }),
     });

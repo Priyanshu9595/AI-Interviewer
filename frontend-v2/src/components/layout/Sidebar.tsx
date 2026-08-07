@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   BarChart3,
+  Brain,
   CalendarClock,
   FileText,
   LayoutDashboard,
@@ -83,8 +84,8 @@ export function Sidebar() {
 
   const brand = (
     <Link href="/dashboard" className="flex items-center gap-2 border-b border-slate-800 px-5 py-4">
-      <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-sm font-bold text-primary-foreground">
-        A
+      <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
+        <Brain className="h-4 w-4" />
       </div>
       <span className="text-sm font-semibold tracking-tight text-white">AI Interview</span>
     </Link>
@@ -95,8 +96,8 @@ export function Sidebar() {
       {/* Mobile top bar */}
       <div className="sticky top-0 z-30 flex items-center justify-between border-b border-border bg-surface px-4 py-3 lg:hidden">
         <Link href="/dashboard" className="flex items-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-sm font-bold text-primary-foreground">
-            A
+          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
+            <Brain className="h-4 w-4" />
           </div>
           <span className="text-sm font-semibold">AI Interview</span>
         </Link>

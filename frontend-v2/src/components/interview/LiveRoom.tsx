@@ -90,6 +90,7 @@ export function LiveRoom({
 
   const socketRef = useRef<Socket | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const screenStreamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const recordingMimeRef = useRef<string | null>(null);
   const chunkFailuresRef = useRef(0);
@@ -219,11 +220,72 @@ export function LiveRoom({
 
         // Recording is opportunistic — an unsupported codec must not break the room.
         if (recordingEnabled && typeof MediaRecorder !== 'undefined') {
+          let recordStream = stream;
+
+          if (devices.screenStream) {
+            screenStreamRef.current = devices.screenStream;
+
+            if (devices.cameraEnabled) {
+              const canvas = document.createElement('canvas');
+              canvas.width = 1280;
+              canvas.height = 720;
+              const ctx2d = canvas.getContext('2d');
+
+              if (ctx2d) {
+                const screenVideo = document.createElement('video');
+                screenVideo.srcObject = devices.screenStream;
+                screenVideo.muted = true;
+                screenVideo.playsInline = true;
+                await screenVideo.play().catch(() => {});
+
+                const camVideo = document.createElement('video');
+                camVideo.srcObject = stream;
+                camVideo.muted = true;
+                camVideo.playsInline = true;
+                await camVideo.play().catch(() => {});
+
+                const drawComposite = () => {
+                  if (cancelled) return;
+                  ctx2d.fillStyle = '#000';
+                  ctx2d.fillRect(0, 0, canvas.width, canvas.height);
+                  
+                  // Draw screen full size
+                  ctx2d.drawImage(screenVideo, 0, 0, canvas.width, canvas.height);
+                  
+                  // Draw camera PIP bottom right
+                  const pipW = 320;
+                  const pipH = 180;
+                  const pad = 20;
+                  ctx2d.drawImage(camVideo, canvas.width - pipW - pad, canvas.height - pipH - pad, pipW, pipH);
+                  
+                  rafRef.current = requestAnimationFrame(drawComposite);
+                };
+                rafRef.current = requestAnimationFrame(drawComposite);
+
+                const canvasStream = canvas.captureStream(30);
+                
+                // Add mic audio track
+                const audioTrack = stream.getAudioTracks()[0];
+                if (audioTrack) {
+                  canvasStream.addTrack(audioTrack);
+                }
+                recordStream = canvasStream;
+              }
+            } else {
+               // Screen only, add mic audio
+               const audioTrack = stream.getAudioTracks()[0];
+               if (audioTrack) {
+                 devices.screenStream.addTrack(audioTrack);
+               }
+               recordStream = devices.screenStream;
+            }
+          }
+
           const mimeType = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm']
             .find((t) => MediaRecorder.isTypeSupported(t));
 
           if (mimeType) {
-            const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 800_000 });
+            const recorder = new MediaRecorder(recordStream, { mimeType, videoBitsPerSecond: 800_000 });
 
             // Each chunk is shipped as it is produced. Holding the whole
             // recording in memory until the end meant that closing the tab, or
@@ -251,6 +313,7 @@ export function LiveRoom({
       cancelled = true;
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       streamRef.current?.getTracks().forEach((t) => t.stop());
+      screenStreamRef.current?.getTracks().forEach((t) => t.stop());
       void audioCtxRef.current?.close().catch(() => {});
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

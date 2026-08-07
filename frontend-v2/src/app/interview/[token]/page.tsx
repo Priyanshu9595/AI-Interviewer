@@ -202,6 +202,7 @@ export default function InterviewPage() {
         interviewerName={context.interviewer.name}
         durationMinutes={context.session.durationMinutes}
         videoRequired={context.session.videoAnalysisEnabled || context.session.recordingEnabled}
+        recordingEnabled={context.session.recordingEnabled}
         token={token}
         onReady={setDevices}
       />

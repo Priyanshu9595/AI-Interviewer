@@ -21,7 +21,7 @@ export class GoogleMeetProvider implements IMeetingProvider {
       conferenceDataVersion: 1,
       requestBody: {
         summary: `Interview: ${title}`,
-        description: 'AI-conducted interview session.',
+        description: `AI-conducted interview session.\n\nView details or join via the dashboard: ${env.APP_URL}/sessions`,
         start: { dateTime: scheduledAt.toISOString(), timeZone: 'UTC' },
         end: { dateTime: end.toISOString(), timeZone: 'UTC' },
         conferenceData: {

@@ -41,15 +41,54 @@ export default function SessionsPage() {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   const [type, setType] = useState('');
+  const [dateFilter, setDateFilter] = useState('');
+  const [specificDate, setSpecificDate] = useState('');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
 
   const load = useCallback(async () => {
     setLoading(true);
+    let dateStart: string | undefined;
+    let dateEnd: string | undefined;
+
+    if (specificDate) {
+      // Create start and end range for the selected specific date
+      const d = new Date(specificDate);
+      if (!isNaN(d.getTime())) {
+        d.setHours(0, 0, 0, 0);
+        dateStart = d.toISOString();
+        
+        const end = new Date(d);
+        end.setHours(23, 59, 59, 999);
+        dateEnd = end.toISOString();
+      }
+    } else if (dateFilter) {
+      const now = new Date();
+      if (dateFilter === 'today') {
+        now.setHours(0, 0, 0, 0);
+        dateStart = now.toISOString();
+        const end = new Date();
+        end.setHours(23, 59, 59, 999);
+        dateEnd = end.toISOString();
+      } else if (dateFilter === 'upcoming') {
+        dateStart = now.toISOString();
+      } else if (dateFilter === 'past_week') {
+        const start = new Date();
+        start.setDate(start.getDate() - 7);
+        dateStart = start.toISOString();
+        dateEnd = now.toISOString();
+      } else if (dateFilter === 'past_month') {
+        const start = new Date();
+        start.setDate(start.getDate() - 30);
+        dateStart = start.toISOString();
+        dateEnd = now.toISOString();
+      }
+    }
+
     try {
       const res = await api.get<{ data: SessionRow[]; totalPages: number; total: number }>('/sessions', {
-        params: { search: search || undefined, status: status || undefined, type: type || undefined, page, limit: 10 },
+        params: { search: search || undefined, status: status || undefined, type: type || undefined, dateStart, dateEnd, page, limit: 10 },
       });
       setRows(res.data.data);
       setTotalPages(res.data.totalPages);
@@ -60,7 +99,7 @@ export default function SessionsPage() {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, status, type, page]);
+  }, [search, status, type, dateFilter, specificDate, page]);
 
   // Debounce so typing in the search box does not fire a request per keystroke.
   useEffect(() => {
@@ -71,7 +110,7 @@ export default function SessionsPage() {
   // Any filter change resets to the first page.
   useEffect(() => {
     setPage(1);
-  }, [search, status, type]);
+  }, [search, status, type, dateFilter, specificDate]);
 
   return (
     <>
@@ -99,7 +138,7 @@ export default function SessionsPage() {
               className="pl-9"
             />
           </div>
-          <Select value={status} onChange={(e) => setStatus(e.target.value)} className="sm:w-44">
+          <Select value={status} onChange={(e) => setStatus(e.target.value)} className="sm:w-36">
             <option value="">All statuses</option>
             <option value="DRAFT">Draft</option>
             <option value="SCHEDULED">Scheduled</option>
@@ -107,12 +146,31 @@ export default function SessionsPage() {
             <option value="COMPLETED">Completed</option>
             <option value="CANCELLED">Cancelled</option>
           </Select>
-          <Select value={type} onChange={(e) => setType(e.target.value)} className="sm:w-40">
+          <Select value={type} onChange={(e) => setType(e.target.value)} className="sm:w-32">
             <option value="">All types</option>
             <option value="TECHNICAL">Technical</option>
             <option value="HR">HR</option>
             <option value="MIXED">Mixed</option>
           </Select>
+          <Select value={dateFilter} onChange={(e) => {
+            setDateFilter(e.target.value);
+            setSpecificDate(''); // clear specific date if range chosen
+          }} className="sm:w-36">
+            <option value="">All time</option>
+            <option value="today">Today</option>
+            <option value="upcoming">Upcoming</option>
+            <option value="past_week">Past 7 days</option>
+            <option value="past_month">Past 30 days</option>
+          </Select>
+          <Input 
+            type="date" 
+            value={specificDate} 
+            onChange={(e) => {
+              setSpecificDate(e.target.value);
+              setDateFilter(''); // clear range if specific date chosen
+            }} 
+            className="sm:w-36 text-muted-foreground" 
+          />
         </CardBody>
       </Card>
 
@@ -141,6 +199,8 @@ export default function SessionsPage() {
                     setSearch('');
                     setStatus('');
                     setType('');
+                    setDateFilter('');
+                    setSpecificDate('');
                   }}
                 >
                   Clear filters

@@ -147,6 +147,7 @@ router.get('/reports/:id', asyncHandler(reports.getReport));
 router.get('/reports/:id/export.pdf', asyncHandler(reports.downloadReportPdf));
 router.get('/reports/:id/export.xlsx', asyncHandler(reports.downloadReportExcel));
 router.post('/reports/:id/feedback-email', asyncHandler(reports.sendFeedbackEmail));
+router.patch('/reports/:id/recommendation', asyncHandler(reports.updateRecommendation));
 router.post('/reports/:id/ats-sync', asyncHandler(reports.syncReportToAts));
 
 // Analytics

@@ -155,3 +155,19 @@ export const syncReportToAts = async (req: AuthRequest, res: Response) => {
 
   res.json({ results });
 };
+
+export const updateRecommendation = async (req: AuthRequest, res: Response) => {
+  const { recommendation } = z
+    .object({ recommendation: z.enum(['STRONG_HIRE', 'HIRE', 'CONSIDER', 'REJECT']) })
+    .parse(req.body);
+
+  const report = await ownedReport(req.user!.userId, param(req, 'id'));
+  if (!report) throw notFound('Report not found');
+
+  await prisma.report.update({
+    where: { id: report.id },
+    data: { hiringRecommendation: recommendation },
+  });
+
+  res.json({ ok: true, recommendation });
+};

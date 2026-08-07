@@ -58,6 +58,7 @@ export function useSpeaker(language: string) {
   const [speaking, setSpeaking] = useState(false);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const resolveRef = useRef<(() => void) | null>(null);
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined' || !window.speechSynthesis) return;
@@ -111,6 +112,7 @@ export function useSpeaker(language: string) {
         utterance.onend = finish;
         utterance.onerror = finish;
         resolveRef.current = finish;
+        utteranceRef.current = utterance; // Prevent garbage collection
 
         setSpeaking(true);
         window.speechSynthesis.speak(utterance);
@@ -130,6 +132,7 @@ export function useSpeaker(language: string) {
   const stop = useCallback(() => {
     if (typeof window !== 'undefined' && window.speechSynthesis) window.speechSynthesis.cancel();
     resolveRef.current?.();
+    utteranceRef.current = null;
     setSpeaking(false);
   }, []);
 

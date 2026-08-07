@@ -114,6 +114,7 @@ export default function ReportPage() {
   const [tab, setTab] = useState<TabId>('overview');
   const [sending, setSending] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [updatingRec, setUpdatingRec] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -200,6 +201,20 @@ export default function ReportPage() {
     }
   };
 
+  const updateRecommendation = async (newRec: string) => {
+    if (!report || newRec === report.hiringRecommendation) return;
+    setUpdatingRec(true);
+    try {
+      await api.patch(`/reports/${report.id}/recommendation`, { recommendation: newRec });
+      setReport({ ...report, hiringRecommendation: newRec });
+      toast.success('Recommendation updated');
+    } catch (err) {
+      toast.error('Failed to update recommendation', errorMessage(err));
+    } finally {
+      setUpdatingRec(false);
+    }
+  };
+
   return (
     <>
       <PageHeader
@@ -260,7 +275,23 @@ export default function ReportPage() {
 
           <div>
             <p className="text-xs uppercase tracking-wide text-muted-foreground">Recommendation</p>
-            <StatusBadge value={report.hiringRecommendation} className="mt-1 text-sm" />
+            <div className="relative inline-flex items-center mt-1 group" title="Click to change recommendation">
+              <StatusBadge 
+                value={report.hiringRecommendation} 
+                className={cn('text-sm cursor-pointer transition-opacity', updatingRec && 'opacity-50')} 
+              />
+              <select
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                value={report.hiringRecommendation}
+                onChange={(e) => updateRecommendation(e.target.value)}
+                disabled={updatingRec}
+              >
+                <option value="STRONG_HIRE">Strong Hire</option>
+                <option value="HIRE">Hire</option>
+                <option value="CONSIDER">Consider</option>
+                <option value="REJECT">Reject</option>
+              </select>
+            </div>
           </div>
 
           <div className="text-sm text-muted-foreground">

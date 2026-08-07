@@ -174,7 +174,16 @@ export function LiveRoom({
     (async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          audio: devices.audioDeviceId ? { deviceId: { exact: devices.audioDeviceId } } : true,
+          audio: devices.audioDeviceId ? { 
+            deviceId: { exact: devices.audioDeviceId },
+            autoGainControl: true,
+            echoCancellation: true,
+            noiseSuppression: true
+          } : {
+            autoGainControl: true,
+            echoCancellation: true,
+            noiseSuppression: true
+          },
           video: devices.cameraEnabled
             ? devices.videoDeviceId
               ? { deviceId: { exact: devices.videoDeviceId } }

@@ -81,11 +81,16 @@ export default function RecordingsPage() {
             <Card key={r.id} className="flex flex-col">
               <button
                 onClick={() => setPlaying(r)}
-                className="group relative flex aspect-video items-center justify-center rounded-t-lg bg-foreground/90 transition-opacity hover:opacity-90"
+                className="group relative flex aspect-video items-center justify-center rounded-t-lg bg-slate-900 overflow-hidden transition-transform hover:opacity-95"
                 aria-label={`Play ${r.candidate.name}'s interview`}
               >
-                <span className="flex h-12 w-12 items-center justify-center rounded-full bg-white/15 backdrop-blur transition-transform group-hover:scale-110">
-                  <Play className="ml-0.5 h-5 w-5 fill-white text-white" />
+                {/* Beautiful placeholder background */}
+                <div className="absolute inset-0 bg-gradient-to-br from-indigo-600/20 via-purple-600/20 to-slate-900/80" />
+                <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay" />
+                <Video className="absolute h-24 w-24 text-white/5 -rotate-12 scale-150" />
+                
+                <span className="relative flex h-14 w-14 items-center justify-center rounded-full bg-white/20 shadow-lg shadow-black/20 backdrop-blur-md transition-transform group-hover:scale-110 group-hover:bg-white/30">
+                  <Play className="ml-1 h-6 w-6 fill-white text-white" />
                 </span>
                 {r.durationSeconds > 0 && (
                   <span className="absolute bottom-2 right-2 rounded bg-black/60 px-1.5 py-0.5 font-mono text-xs text-white">

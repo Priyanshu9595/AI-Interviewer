@@ -191,12 +191,12 @@ export function Checkbox({
 type BadgeTone = 'neutral' | 'primary' | 'success' | 'warning' | 'danger' | 'info';
 
 const BADGE_TONES: Record<BadgeTone, string> = {
-  neutral: 'bg-muted text-muted-foreground',
-  primary: 'bg-primary-soft text-primary',
-  success: 'bg-success-soft text-success',
-  warning: 'bg-warning-soft text-warning',
-  danger: 'bg-danger-soft text-danger',
-  info: 'bg-info-soft text-info',
+  neutral: 'bg-slate-100 text-slate-600 border border-slate-200',
+  primary: 'bg-indigo-50 text-indigo-700 border border-indigo-200/60 shadow-sm',
+  success: 'bg-emerald-50 text-emerald-700 border border-emerald-200/60 shadow-sm',
+  warning: 'bg-amber-50 text-amber-700 border border-amber-200/60 shadow-sm',
+  danger: 'bg-rose-50 text-rose-700 border border-rose-200/60 shadow-sm',
+  info: 'bg-sky-50 text-sky-700 border border-sky-200/60 shadow-sm',
 };
 
 export function Badge({
@@ -207,7 +207,7 @@ export function Badge({
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium',
+        'inline-flex items-center justify-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-bold tracking-wide transition-colors',
         BADGE_TONES[tone],
         className,
       )}

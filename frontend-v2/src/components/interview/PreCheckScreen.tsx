@@ -69,7 +69,16 @@ export function PreCheckScreen({
 
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          audio: audioDeviceId ? { deviceId: { exact: audioDeviceId } } : true,
+          audio: audioDeviceId ? { 
+            deviceId: { exact: audioDeviceId },
+            autoGainControl: true,
+            echoCancellation: true,
+            noiseSuppression: true
+          } : {
+            autoGainControl: true,
+            echoCancellation: true,
+            noiseSuppression: true
+          },
           video: withCamera ? (videoDeviceId ? { deviceId: { exact: videoDeviceId } } : true) : false,
         });
 

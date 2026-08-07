@@ -2,10 +2,10 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
-import { FileText } from 'lucide-react';
+import { FileText, Search } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { useToast } from '@/components/Toast';
-import { Badge, Card, EmptyState, Skeleton, StatusBadge, scoreTone } from '@/components/ui';
+import { Badge, Card, CardBody, EmptyState, Input, Skeleton, StatusBadge, scoreTone } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
 import { avatarColor, cn, formatDateTime, initials } from '@/lib/utils';
 
@@ -27,6 +27,7 @@ export default function ReportsPage() {
   const toast = useToast();
   const [rows, setRows] = useState<ReportRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     api
@@ -39,13 +40,15 @@ export default function ReportsPage() {
 
   const groupedRows = useMemo(() => {
     const groups: Record<string, ReportRow[]> = {};
+    const query = searchQuery.toLowerCase().trim();
     for (const r of rows) {
       const role = r.sessionCandidate.interviewSession.title;
+      if (query && !role.toLowerCase().includes(query)) continue;
       if (!groups[role]) groups[role] = [];
       groups[role].push(r);
     }
     return groups;
-  }, [rows]);
+  }, [rows, searchQuery]);
 
   if (loading) {
     return (
@@ -65,12 +68,28 @@ export default function ReportsPage() {
         }
       />
 
+      {rows.length > 0 && (
+        <Card className="mb-6">
+          <CardBody className="py-3">
+            <div className="relative max-w-sm">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search by job title"
+                className="pl-9"
+              />
+            </div>
+          </CardBody>
+        </Card>
+      )}
+
       {rows.length === 0 ? (
         <Card>
           <EmptyState
             icon={FileText}
-            title="No reports yet"
-            description="A report is generated automatically as soon as a candidate finishes their interview."
+            title={searchQuery ? 'No roles found matching your search' : 'No reports yet'}
+            description={searchQuery ? 'Try a different search term.' : 'A report is generated automatically as soon as a candidate finishes their interview.'}
           />
         </Card>
       ) : (

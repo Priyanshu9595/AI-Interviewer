@@ -6,9 +6,18 @@ interviews, conducts them as a spoken conversation, evaluates the candidate acro
 technical, communication and behavioural dimensions, and produces a scored report
 with a hiring recommendation.
 
+Interviews run either in the platform's own browser room, or — by pasting a
+**Google Meet, Zoom or Microsoft Teams** link the recruiter already created —
+inside that meeting, where a Playwright-driven Chromium joins as a participant
+and conducts the interview by voice. See **[docs/MEETING_BOT.md](docs/MEETING_BOT.md)**
+for that path, and **[docs/ENVIRONMENT.md](docs/ENVIRONMENT.md)** for every
+configuration value.
+
 ```
 ├── backend/       Express 5 + Prisma + PostgreSQL + Socket.IO + Groq
+│   └── src/services/meetingBot/      Playwright bot that joins Meet/Zoom/Teams
 ├── frontend-v2/   Next.js 14 (App Router) + TypeScript + Tailwind  ← the frontend
+├── docs/          setup guides
 └── temp-repo/     unrelated scratch checkout — not part of the app
 ```
 
@@ -271,6 +280,10 @@ top the list.
 | Candidate upload, single and bulk CSV/Excel | `candidate.controller.ts`, `CandidatesTab.tsx` |
 | Resume upload, parsing and per-candidate questions | `ResumeService.ts`, `ResumeUpload.tsx`, `ResumePanel.tsx` |
 | Meeting links (Meet / Zoom / Teams / built-in) | `lib/providers/` |
+| AI joins an existing Meet / Zoom / Teams link and interviews there | `services/meetingBot/`, `/ai-interviews` — [guide](docs/MEETING_BOT.md) |
+| Per-platform join flow, pre-join, camera/mic, lobby admission | `meetingBot/platforms/`, `selectors.ts` |
+| Meeting audio in and out (WebRTC tap, synthetic microphone) | `meetingBot/audioManager.ts`, `injected/audioBridge.ts` |
+| Live bot status over Socket.IO | `realtime/meetBotGateway.ts`, `hooks/useMeetBot.ts` |
 | Invitations and 24h / 1h / 5min reminders | `SchedulerService.ts` |
 | No-show detection and absent marking | `SchedulerService.ts` + `InterviewStateMachine.ts` |
 | Dynamic question generation from the JD | `QuestionGenerationService.ts` |

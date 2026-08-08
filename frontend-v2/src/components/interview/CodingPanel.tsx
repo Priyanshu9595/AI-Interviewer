@@ -93,10 +93,16 @@ export function CodingPanel({
   token,
   challenge,
   onSubmitted,
+  onCodeChange,
 }: {
   token: string;
   challenge: CodingChallenge;
   onSubmitted: (summary: { passed: number; total: number }) => void;
+  /**
+   * Fires on every edit, so the interview running in the meeting can mirror the
+   * candidate's screen. Optional: the built-in room has nobody to mirror to.
+   */
+  onCodeChange?: (state: { code: string; language: string }) => void;
 }) {
   const [language, setLanguage] = useState('javascript');
   const [code, setCode] = useState(challenge.starterCode || STARTERS.javascript || '');
@@ -114,6 +120,14 @@ export function CodingPanel({
     if (isUntouched) setCode(STARTERS[language] ?? '');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [language]);
+
+  // Mirrored on a timer rather than per keystroke: the watchers want to follow
+  // the work, not receive three hundred messages a minute.
+  useEffect(() => {
+    if (!onCodeChange) return;
+    const timer = setTimeout(() => onCodeChange({ code, language }), 400);
+    return () => clearTimeout(timer);
+  }, [code, language, onCodeChange]);
 
   const run = async (dryRun: boolean) => {
     setError('');

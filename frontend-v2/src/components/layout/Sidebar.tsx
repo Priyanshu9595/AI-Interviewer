@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   BarChart3,
+  Bot,
   Brain,
   CalendarClock,
   FileText,
@@ -20,6 +21,7 @@ import { avatarColor, cn, initials } from '@/lib/utils';
 
 const NAV = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/ai-interviews', label: 'AI interviews', icon: Bot },
   { href: '/sessions', label: 'Interview sessions', icon: CalendarClock },
   { href: '/candidates', label: 'Candidates', icon: Users },
   { href: '/reports', label: 'Reports', icon: FileText },

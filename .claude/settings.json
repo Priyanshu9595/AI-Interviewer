@@ -7,7 +7,27 @@
       "Bash(npx tsx *)",
       "Bash(npx next *)",
       "Bash(echo \"EXIT=$?\")",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(npm install *)",
+      "Bash(node -e \"console.log\\(require\\('./package.json'\\).dependencies.playwright\\)\")",
+      "Bash(npx playwright *)",
+      "Bash(python -c ' *)",
+      "Bash(grep -n \"^#\\\\{1,2\\\\} \" README.md)",
+      "PowerShell(Stop-Process -Id 28032 -Force)",
+      "PowerShell(Move-Item -Path \"d:\\\\AI INTERVIEW\\\\backend\\\\src\\\\services\\\\googleMeetBot\" -Destination \"d:\\\\AI INTERVIEW\\\\backend\\\\src\\\\services\\\\meetingBot\")",
+      "PowerShell(New-Item -ItemType Directory -Force -Path \"d:\\\\AI INTERVIEW\\\\backend\\\\src\\\\services\\\\meetingBot\\\\platforms\")",
+      "Bash(node \"C:/Users/PRIYA~1.LAP/AppData/Local/Temp/claude/d--AI-INTERVIEW/867b790a-2500-46d1-bb7f-0dc2928f556f/scratchpad/fixmojibake.js\" backend/src/controllers/meetInterview.controller.ts backend/src/realtime/meetBotGateway.ts backend/src/services/SchedulerService.ts backend/src/server.ts backend/scripts/botlogin.ts backend/scripts/bottest.ts)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(grep -viE \"^$|^>\")",
+      "Read(//tmp/**)",
+      "Bash(curl -s -m 10 http://localhost:5000/health)",
+      "Bash(curl -s -m 3 http://localhost:5000/health)",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\).on\\('end',\\(\\)=>{const j=JSON.parse\\(d\\);console.log\\('  -> '+j.status+' / '+j.errorCode\\);console.log\\('     '+j.errorMessage\\)}\\)\")",
+      "Bash(rm -f scripts/_cleanup.tmp.ts)",
+      "PowerShell(Get-NetTCPConnection -LocalPort 5000 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { $p = Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue; if \\($p\\) { \"PID $\\($p.Id\\)  $\\($p.ProcessName\\)  started $\\($p.StartTime\\)\" } })",
+      "Bash(echo \"exit $?\")",
+      "Bash(curl -s -m 5 http://localhost:5000/health)",
+      "Bash(cd \"d:/AI INTERVIEW/backend\" && grep -iE \"meet-bot|scheduler|queued|joining\" /tmp/srv7.log | head -12)"
     ]
   }
 }

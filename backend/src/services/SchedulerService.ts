@@ -105,6 +105,8 @@ export class SchedulerService {
 
     if (count) {
       console.log(`[scheduler] re-timed ${count} bot launch(es) for session ${interviewSessionId}`);
+      // The moved interview may now be the next one due.
+      await MeetBotManager.armNextLaunch();
     }
   }
 

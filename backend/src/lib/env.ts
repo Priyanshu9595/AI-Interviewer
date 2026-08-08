@@ -93,8 +93,14 @@ const envSchema = z.object({
   /// Shown to the candidate in the participant list.
   MEET_BOT_DISPLAY_NAME: z.string().default('AI Interviewer'),
 
-  /// How early the bot joins, so it is inside and settled before the candidate.
-  MEET_BOT_JOIN_LEAD_MINUTES: z.coerce.number().default(5),
+  /**
+   * How many minutes before the scheduled time the bot opens the meeting.
+   *
+   * Zero means it joins at the scheduled time itself: a 3:00 interview is
+   * joined at 3:00. Raise it to have the bot admitted and settled before the
+   * candidate arrives, at the cost of it sitting in an empty meeting.
+   */
+  MEET_BOT_JOIN_LEAD_MINUTES: z.coerce.number().default(0),
 
   /// How long to sit in the lobby waiting for the organiser to admit the bot.
   MEET_BOT_ADMISSION_TIMEOUT_MS: z.coerce.number().default(10 * 60_000),

@@ -305,9 +305,10 @@ export const createMeetInterview = async (req: AuthRequest, res: Response) => {
     );
   }
 
-  // Scheduled for now, or for less than the lead time away: start at once
-  // rather than leaving the recruiter watching nothing until the next tick.
-  void MeetBotManager.startIfDue(interview.id);
+  // Already due: start at once rather than leaving the recruiter watching
+  // nothing until the next tick. Due soon: give it its own timer, so a 3:00
+  // interview is joined at 3:00 rather than whenever the tick next lands.
+  void MeetBotManager.startIfDue(interview.id).then(() => MeetBotManager.armNextLaunch());
 
   const created = await ownedInterview(req, interview.id);
 

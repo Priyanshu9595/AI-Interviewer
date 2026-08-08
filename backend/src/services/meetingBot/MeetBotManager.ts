@@ -65,6 +65,9 @@ type EventSink = (interviewId: string, event: BotEventName, payload: unknown) =>
 export class MeetBotManager {
   private static readonly sessions = new Map<string, MeetBotSession>();
 
+  /** Fires at the exact moment the next interview is due. */
+  private static launchTimer: NodeJS.Timeout | null = null;
+
   /**
    * Set by the realtime gateway. A callback rather than an import so the
    * manager does not depend on the socket layer — the bot has to work in a
@@ -212,6 +215,8 @@ export class MeetBotManager {
 
   /** Closes every browser on shutdown so no orphan Chromium is left behind. */
   static async shutdown(): Promise<void> {
+    this.clearLaunchTimer();
+
     const running = [...this.sessions.values()];
     if (!running.length) return;
 
@@ -232,6 +237,18 @@ export class MeetBotManager {
    */
   static async startDue(): Promise<void> {
     if (!env.MEET_BOT_ENABLED) return;
+
+    try {
+      await this.launchDue();
+    } finally {
+      // Re-armed after the claims, never before: a run that is still SCHEDULED
+      // and already overdue would otherwise arm a zero-delay timer that calls
+      // straight back into here.
+      void this.armNextLaunch();
+    }
+  }
+
+  private static async launchDue(): Promise<void> {
     if (this.sessions.size >= env.MEET_BOT_MAX_CONCURRENT) return;
 
     const now = new Date();
@@ -284,6 +301,62 @@ export class MeetBotManager {
         await this.close(run.sessionCandidateId, 'FAILED', error.message, error.code);
       }
     }
+  }
+
+  /**
+   * Sets a timer for the exact moment the next interview is due.
+   *
+   * The scheduler ticks once a minute, which was fine while the bot joined five
+   * minutes early — a interview due at 3:00 was launched at 2:55 and nobody
+   * could tell whether that was 2:55:01 or 2:55:59. Joining *at* the scheduled
+   * time makes that minute the difference between punctual and visibly late, so
+   * anything landing inside the next tick gets its own timer.
+   *
+   * The tick remains the backstop: it re-arms this every pass, so a missed or
+   * cleared timer costs punctuality, never the interview.
+   */
+  static async armNextLaunch(): Promise<void> {
+    if (!env.MEET_BOT_ENABLED) return;
+
+    if (this.launchTimer) {
+      clearTimeout(this.launchTimer);
+      this.launchTimer = null;
+    }
+
+    // Nothing can be launched while every slot is busy, and a timer that fires
+    // only to find that out would spin on an overdue run.
+    if (this.sessions.size >= env.MEET_BOT_MAX_CONCURRENT) return;
+
+    const next = await prisma.meetBotRun
+      .findFirst({
+        where: { status: 'SCHEDULED' },
+        orderBy: { joinAt: 'asc' },
+        select: { joinAt: true },
+      })
+      .catch(() => null);
+
+    if (!next) return;
+
+    const msUntil = next.joinAt.getTime() - Date.now();
+    // Further out than the next tick? The scheduler will reach it first and
+    // re-arm this with a shorter, more useful delay.
+    if (msUntil > env.SCHEDULER_INTERVAL_MS) return;
+
+    this.launchTimer = setTimeout(
+      () => {
+        this.launchTimer = null;
+        void this.startDue();
+      },
+      // Floored rather than fired immediately: an already-overdue run that
+      // startDue declined to take must not become a tight loop.
+      Math.max(1_000, msUntil),
+    );
+  }
+
+  /** Drops the pending launch timer, for shutdown. */
+  static clearLaunchTimer(): void {
+    if (this.launchTimer) clearTimeout(this.launchTimer);
+    this.launchTimer = null;
   }
 
   /**

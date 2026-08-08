@@ -12,6 +12,7 @@ export type BotErrorCode =
   | 'BOT_DISABLED'
   | 'BROWSER_LAUNCH_FAILED'
   | 'BROWSER_CRASHED'
+  | 'SERVERLESS_HOST'
   | 'SIGN_IN_REQUIRED'
   | 'VERIFICATION_REQUIRED'
   | 'GUEST_JOIN_BLOCKED'
@@ -59,6 +60,8 @@ const GUIDANCE: Record<BotErrorCode, string> = {
   BOT_DISABLED: 'The meeting bot is switched off on this server (MEET_BOT_ENABLED).',
   BROWSER_LAUNCH_FAILED: 'The interviewer could not start its browser. Check the Playwright install on the server.',
   BROWSER_CRASHED: 'The interviewer’s browser stopped unexpectedly during the meeting.',
+  SERVERLESS_HOST:
+    'The meeting bot cannot run on a serverless host. It needs a long-running server with a persistent disk — the browser stays open for the whole interview, and the signed-in profile has to survive between runs. Deploy the backend to Railway, Render, Fly.io or a VPS. The frontend can stay where it is.',
   SIGN_IN_REQUIRED:
     'The bot account is signed out of this meeting platform. Run `npm run bot:login` on the server to sign in again.',
   VERIFICATION_REQUIRED:

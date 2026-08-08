@@ -27,7 +27,13 @@
       "PowerShell(Get-NetTCPConnection -LocalPort 5000 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { $p = Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue; if \\($p\\) { \"PID $\\($p.Id\\)  $\\($p.ProcessName\\)  started $\\($p.StartTime\\)\" } })",
       "Bash(echo \"exit $?\")",
       "Bash(curl -s -m 5 http://localhost:5000/health)",
-      "Bash(cd \"d:/AI INTERVIEW/backend\" && grep -iE \"meet-bot|scheduler|queued|joining\" /tmp/srv7.log | head -12)"
+      "Bash(cd \"d:/AI INTERVIEW/backend\" && grep -iE \"meet-bot|scheduler|queued|joining\" /tmp/srv7.log | head -12)",
+      "Bash(node -e \"console.log\\('playwright:', require\\('playwright/package.json'\\).version\\)\")",
+      "Bash(node -e \"console.log\\('node engines:', JSON.stringify\\(require\\('./package.json'\\).engines||'unset'\\)\\)\")",
+      "Bash(timeout 570 docker build -t ai-interview-api:test .)",
+      "Bash(node -e ' *)",
+      "Read(//d/frontend-v2/**)",
+      "Bash(timeout 120 npx tsx scripts/_final.tmp.ts)"
     ]
   }
 }

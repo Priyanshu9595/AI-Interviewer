@@ -1,0 +1,8 @@
+node_modules/
+.DS_Store
+*.log
+
+# The Linux Chromium profile produced by `npm run bot:login:vnc`, before it is
+# copied to the server. This is a credential: it holds a live Google session for
+# the bot account. Never commit it.
+bot-profile/

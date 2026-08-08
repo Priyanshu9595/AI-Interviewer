@@ -125,6 +125,101 @@ ending `?pwd=…`. The form warns you if it is missing.
 
 ---
 
+## 2a. Where the backend has to run
+
+**The meeting bot cannot run on a serverless platform** — Vercel, Netlify,
+Lambda, Azure Functions. This is not a configuration problem; the model is
+wrong for the job in four independent ways:
+
+| The bot needs | Serverless gives |
+|---|---|
+| A browser held open for the whole interview, 15–60 minutes | A function with a timeout measured in seconds |
+| A signed-in Chromium profile that survives for months | A `/tmp` that is discarded between invocations |
+| An interactive sign-in, once, by a human | No display and no session to sign in from |
+| An always-awake scheduler and a WebSocket server | Processes that exist only while handling a request |
+
+Playwright's Chromium is also around 300 MB, well past Vercel's function bundle
+limit.
+
+So the backend belongs on something that runs a normal long-lived process:
+**Railway, Render, Fly.io, a VPS**, or your own machine. **The frontend can stay
+on Vercel** — it is just pages, and it is not the part that drives a browser.
+
+The server says so itself rather than letting you find out during an interview.
+At boot:
+
+```
+[config] MEET_BOT_ENABLED=true but this process is running on Vercel.
+         The meeting bot cannot work there: ...
+```
+
+and `GET /health` reports it, which is the quickest way to check a deployment
+you cannot see the logs of:
+
+```json
+{ "meetBot": { "enabled": true, "unsupportedHost": "Vercel" } }
+```
+
+`unsupportedHost: null` means the host is fine.
+
+### Vercel frontend + Render backend
+
+This is the combination that works, and there is a blueprint for it:
+[`render.yaml`](../render.yaml) and [`backend/Dockerfile`](../backend/Dockerfile).
+
+```
+   Vercel                          Render
+   ┌────────────────────┐          ┌─────────────────────────────┐
+   │ frontend-v2        │  HTTPS   │ backend                     │
+   │ Next.js pages      │ ───────► │ API + Socket.IO             │
+   │                    │  WSS     │ scheduler (always awake)     │
+   │ NEXT_PUBLIC_API_URL│          │ Chromium under Xvfb          │
+   └────────────────────┘          │ /var/data ← signed-in profile│
+                                   └─────────────────────────────┘
+```
+
+Four things that will otherwise bite:
+
+1. **Not the free instance.** Render's free tier sleeps after 15 minutes idle.
+   A sleeping process has no scheduler, so no interview ever joins by itself.
+   It has to be a paid instance — and `standard` rather than `starter`, because
+   512 MB cannot hold Node plus a Chromium.
+2. **Attach a disk.** Without one, `/var/data` is wiped on every deploy and the
+   bot is signed out again — `SIGN_IN_REQUIRED` on the next interview. The
+   blueprint mounts 2 GB there and points `GOOGLE_BOT_PROFILE_PATH` at it.
+3. **`NODE_ENV=production`.** It is what makes the refresh cookie
+   `SameSite=None; Secure`. Without it the browser silently drops the cookie
+   between the Vercel domain and the Render domain, and recruiters are signed
+   out on every reload — visible as a 401 on `/api/auth/refresh`.
+4. **`APP_URL` must be the Vercel URL**, and that deployment must be running a
+   build that actually has `/interview/[token]/code`, or the coding round hands
+   the candidate a 404. The dashboard now checks this and says so.
+
+Set `NEXT_PUBLIC_API_URL` on Vercel to the Render URL. One instance only: the
+interview state machine is held in memory and the scheduler must run in exactly
+one place.
+
+The image runs the browser **headed under Xvfb** rather than headless, which is
+why `MEET_BOT_HEADLESS=false` in the blueprint despite there being no monitor —
+meeting clients behave better when they are not talking to a headless browser.
+
+### Signing in on a headless server
+
+`bot:login` opens a real window, which a bare Linux server does not have. Two
+ways round it:
+
+- Run `npm run bot:login` **on your own machine**, then copy the resulting
+  `.meet-bot-profile/` directory to the server. It is portable. Be aware that
+  Google may challenge the session when it appears from a new IP address, in
+  which case sign in again from somewhere closer to the server.
+- Or install a virtual display on the server (`xvfb`) and run it there over VNC.
+
+Either way, set `MEET_BOT_HEADLESS=true` on a server with no display, and
+install the browser's system dependencies with
+`npx playwright install --with-deps chromium`.
+
+---
+
 ## 3. Prerequisites
 
 | What | Why |

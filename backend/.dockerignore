@@ -1,0 +1,12 @@
+node_modules
+dist
+uploads
+.env
+.env.local
+
+# The signed-in Chromium profile is a credential and belongs on a mounted disk,
+# never baked into an image that gets pushed to a registry.
+.meet-bot-profile
+
+*.log
+scripts/test-*

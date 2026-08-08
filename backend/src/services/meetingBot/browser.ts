@@ -29,6 +29,31 @@ export const MASTER_PROFILE_DIR = path.isAbsolute(env.GOOGLE_BOT_PROFILE_PATH)
  */
 export const SHARE_TAB_TITLE = 'AI Interview Candidate Code';
 
+/**
+ * Whether this process is running somewhere the bot fundamentally cannot work.
+ *
+ * Serverless platforms give a function a few minutes, a read-only bundle and a
+ * `/tmp` that vanishes between invocations. The bot needs the opposite of all
+ * three: a browser held open for the length of an interview, a signed-in
+ * Chromium profile that survives for months, and a scheduler that is always
+ * awake. No amount of configuration bridges that.
+ *
+ * Detected so the failure says so, instead of "run bot:login" — advice that
+ * cannot be followed on a host with no interactive session and no disk to
+ * write to.
+ */
+export function serverlessHost(): string | null {
+  if (process.env.VERCEL) return 'Vercel';
+  if (process.env.AWS_LAMBDA_FUNCTION_NAME) return 'AWS Lambda';
+  if (process.env.NETLIFY) return 'Netlify';
+  if (process.env.FUNCTIONS_WORKER_RUNTIME) return 'Azure Functions';
+
+  // Cloud Run and similar container hosts are deliberately not listed: they run
+  // a normal long-lived process and work fine, provided they are configured not
+  // to scale to zero.
+  return null;
+}
+
 export interface LaunchOptions {
   /**
    * Give this run its own copy of the signed-in profile. Chromium takes an
@@ -164,6 +189,11 @@ export async function launchBrowser(opts: LaunchOptions = {}): Promise<BotBrowse
   const headless = opts.headless ?? env.MEET_BOT_HEADLESS;
   const muteOutput = opts.muteOutput ?? env.MEET_BOT_TTS !== 'webspeech';
   const fakeDevices = opts.fakeDevices ?? env.MEET_BOT_TTS !== 'webspeech';
+
+  // Checked before the profile, because on a serverless host the missing
+  // profile is a symptom and "run bot:login" is impossible advice.
+  const serverless = serverlessHost();
+  if (serverless) throw new BotError('SERVERLESS_HOST', `running on ${serverless}`);
 
   const signedIn = await hasSignedInProfile();
 

@@ -29,6 +29,7 @@
     "verify:incomplete": "tsx scripts/incompletetest.ts",
     "cloudcheck": "tsx scripts/cloudcheck.ts",
     "bot:login": "tsx scripts/botlogin.ts",
+    "bot:login:vnc": "bash scripts/botlogin-vnc.sh",
     "bot:test": "tsx scripts/bottest.ts",
     "bot:install": "playwright install chromium"
   },

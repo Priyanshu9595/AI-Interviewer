@@ -187,7 +187,7 @@ export default function LandingPage() {
 
       {/* CTA */}
       <section className="relative overflow-hidden border-t border-slate-200 bg-white py-20 sm:py-28">
-        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.02] mix-blend-multiply" />
+        <div className="absolute inset-0 grain-overlay opacity-[0.02] mix-blend-multiply" />
         <div className="absolute inset-0 bg-gradient-to-b from-transparent to-indigo-50/50" />
         
         <div className="relative mx-auto max-w-2xl px-4 text-center sm:px-6">

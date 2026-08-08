@@ -86,7 +86,7 @@ export default function RecordingsPage() {
               >
                 {/* Beautiful placeholder background */}
                 <div className="absolute inset-0 bg-gradient-to-br from-indigo-600/20 via-purple-600/20 to-slate-900/80" />
-                <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay" />
+                <div className="absolute inset-0 grain-overlay opacity-20 mix-blend-overlay" />
                 <Video className="absolute h-24 w-24 text-white/5 -rotate-12 scale-150" />
                 
                 <span className="relative flex h-14 w-14 items-center justify-center rounded-full bg-white/20 shadow-lg shadow-black/20 backdrop-blur-md transition-transform group-hover:scale-110 group-hover:bg-white/30">

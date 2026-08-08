@@ -15,6 +15,7 @@ import { configureCodingGateway } from './realtime/codingGateway';
 import { apiRoutes } from './routes';
 import { SchedulerService } from './services/SchedulerService';
 import { MeetBotManager } from './services/meetingBot/MeetBotManager';
+import { serverlessHost } from './services/meetingBot/browser';
 
 const app = express();
 const httpServer = http.createServer(app);
@@ -44,6 +45,9 @@ app.get('/health', async (_req, res) => {
       voice: env.MEET_BOT_TTS,
       running: MeetBotManager.activeCount(),
       capacity: env.MEET_BOT_MAX_CONCURRENT,
+      // Non-null means this host cannot run the bot at all, whatever else is
+      // configured. Worth reporting from /health so it is visible remotely.
+      unsupportedHost: serverlessHost(),
     },
     uptimeSeconds: Math.round(process.uptime()),
     timestamp: new Date().toISOString(),
@@ -73,6 +77,7 @@ httpServer.listen(env.PORT, () => {
   void verifyEmailSender();
   void verifyCloudinary();
   void verifySpeech();
+  warnAboutHost();
   warnAboutAppUrl();
   // Interviews whose process died still hold a lock and an in-progress status.
   // Clearing them before the scheduler starts lets them be retried instead of
@@ -94,6 +99,25 @@ httpServer.listen(env.PORT, () => {
  * bites, because the recruiter only finds out when a candidate cannot open it
  * mid-interview. Saying so at boot costs one line and saves that.
  */
+/**
+ * The meeting bot needs a long-running process with a disk. Serverless hosts
+ * provide neither, and the failure otherwise surfaces hours later as a
+ * confusing "the bot has never been signed in".
+ */
+function warnAboutHost(): void {
+  const serverless = serverlessHost();
+  if (!serverless || !env.MEET_BOT_ENABLED) return;
+
+  console.warn(
+    `[config] MEET_BOT_ENABLED=true but this process is running on ${serverless}.\n` +
+      '         The meeting bot cannot work there: it holds a browser open for the whole\n' +
+      '         interview, needs a signed-in Chromium profile that survives between runs,\n' +
+      '         and needs an always-awake scheduler.\n' +
+      '         Deploy the backend to Railway, Render, Fly.io or a VPS. The frontend is fine\n' +
+      '         where it is. Set MEET_BOT_ENABLED=false here to silence this.',
+  );
+}
+
 function warnAboutAppUrl(): void {
   const local = /localhost|127\.0\.0\.1/.test(env.API_URL);
   const remoteApp = !/localhost|127\.0\.0\.1/.test(env.APP_URL);

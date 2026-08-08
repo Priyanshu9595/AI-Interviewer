@@ -67,6 +67,68 @@ const envSchema = z.object({
     .string()
     .default('true')
     .transform((v) => v !== 'false'),
+
+  // -------------------------------------------------------------------------
+  // Google Meet bot
+  // -------------------------------------------------------------------------
+
+  MEET_BOT_ENABLED: z
+    .string()
+    .default('true')
+    .transform((v) => v !== 'false'),
+
+  /// Chromium user-data directory holding the bot account's Google session.
+  /// Sign in once with `npm run bot:login`; nothing else ever authenticates.
+  GOOGLE_BOT_PROFILE_PATH: z.string().default('./.meet-bot-profile'),
+
+  /// Real Chrome handles Meet better than bundled Chromium. `chromium` uses
+  /// Playwright's own build, which needs no separate Chrome install.
+  MEET_BOT_BROWSER_CHANNEL: z.enum(['chrome', 'msedge', 'chromium']).default('chrome'),
+
+  MEET_BOT_HEADLESS: z
+    .string()
+    .default('false')
+    .transform((v) => v === 'true'),
+
+  /// Shown to the candidate in the participant list.
+  MEET_BOT_DISPLAY_NAME: z.string().default('AI Interviewer'),
+
+  /// How early the bot joins, so it is inside and settled before the candidate.
+  MEET_BOT_JOIN_LEAD_MINUTES: z.coerce.number().default(5),
+
+  /// How long to sit in the lobby waiting for the organiser to admit the bot.
+  MEET_BOT_ADMISSION_TIMEOUT_MS: z.coerce.number().default(10 * 60_000),
+
+  /**
+   * How long the bot waits for a candidate who has not arrived, counted from
+   * the scheduled start rather than from when the bot joined.
+   *
+   * Two phases, because "five minutes late" and "not coming" are different
+   * things. A 3:00 interview waits until 3:05; if nobody is there, it waits a
+   * final 3:05–3:07 and then cancels. A candidate who arrives at any point in
+   * either window is admitted and the interview starts immediately.
+   */
+  MEET_BOT_CANDIDATE_WAIT_MINUTES: z.coerce.number().default(5),
+  MEET_BOT_CANDIDATE_GRACE_MINUTES: z.coerce.number().default(2),
+
+  /// How many meetings one process will drive at once. Each is a real browser.
+  MEET_BOT_MAX_CONCURRENT: z.coerce.number().default(2),
+
+  /**
+   * How the AI's voice reaches the meeting.
+   *
+   * `deepgram` synthesises server-side and feeds the PCM straight into the
+   * synthetic microphone the bot hands Google Meet. Nothing to install.
+   *
+   * `webspeech` uses the browser's SpeechSynthesis API, which plays to the
+   * operating system's audio device and returns no samples we can inject. It
+   * therefore needs a virtual audio cable — see docs/GOOGLE_MEET_BOT.md.
+   */
+  MEET_BOT_TTS: z.enum(['deepgram', 'webspeech']).default('deepgram'),
+  MEET_BOT_TTS_MODEL: z.string().default('aura-2-thalia-en'),
+
+  /// Words per minute multiplier for SpeechSynthesis, when that driver is used.
+  MEET_BOT_TTS_RATE: z.coerce.number().default(1),
 });
 
 const parsed = envSchema.safeParse(process.env);

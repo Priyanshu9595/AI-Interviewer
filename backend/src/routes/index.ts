@@ -9,6 +9,7 @@ import * as auth from '../controllers/auth.controller';
 import * as sessions from '../controllers/session.controller';
 import * as candidates from '../controllers/candidate.controller';
 import * as interview from '../controllers/interview.controller';
+import * as meetInterview from '../controllers/meetInterview.controller';
 import * as reports from '../controllers/report.controller';
 import * as analytics from '../controllers/analytics.controller';
 import * as ats from '../controllers/ats.controller';
@@ -72,6 +73,7 @@ router.get('/auth/me', requireAuth, asyncHandler(auth.me));
 
 router.get('/interview/:token', asyncHandler(interview.getInterviewContext));
 router.get('/interview/:token/transcript', asyncHandler(interview.getTranscript));
+router.get('/interview/:token/coding', asyncHandler(interview.getCodingChallenge));
 router.post('/interview/:token/code/run', asyncHandler(interview.runCode));
 router.post('/interview/:token/code/hint', asyncHandler(interview.getCodingHint));
 router.post('/interview/:token/video-metrics', asyncHandler(interview.postVideoMetrics));
@@ -125,6 +127,19 @@ router.get('/candidates', asyncHandler(candidates.listAllCandidates));
 router.get('/sessions/:id/leaderboard', asyncHandler(sessions.getLeaderboard));
 router.get('/sessions/:id/shortlist', asyncHandler(sessions.getShortlist));
 router.get('/sessions/:id/export.xlsx', asyncHandler(reports.downloadSessionExcel));
+
+// AI interviews run inside a meeting link the recruiter already created.
+// Declared before the parameterised routes below so `/interviews` itself is not
+// swallowed by a path expecting an id.
+router.get('/interviews/queue', asyncHandler(meetInterview.getMeetBotQueue));
+router.get('/interviews', asyncHandler(meetInterview.listMeetInterviews));
+router.post('/interviews', asyncHandler(meetInterview.createMeetInterview));
+router.get('/interviews/:id', asyncHandler(meetInterview.getMeetInterview));
+router.get('/interviews/:id/status', asyncHandler(meetInterview.getMeetInterviewStatus));
+router.get('/interviews/:id/transcript', asyncHandler(meetInterview.getMeetInterviewTranscript));
+router.post('/interviews/:id/start', asyncHandler(meetInterview.startMeetInterview));
+router.post('/interviews/:id/stop', asyncHandler(meetInterview.stopMeetInterview));
+router.post('/interviews/:id/report/retry', asyncHandler(meetInterview.retryMeetInterviewReport));
 
 // Live interview inspection & evaluation
 router.get('/interviews/:sessionCandidateId/insights', asyncHandler(interview.getLiveInsights));

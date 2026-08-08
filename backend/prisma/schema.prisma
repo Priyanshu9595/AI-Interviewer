@@ -178,6 +178,7 @@ model SessionCandidate {
   reminders        Reminder[]
   insights         RealtimeInsight[]
   videoFrames      VideoAnalysisFrame[]
+  meetBotRun       MeetBotRun?
 
   @@unique([interviewSessionId, candidateId])
   @@index([status])
@@ -485,6 +486,71 @@ model Reminder {
 
   @@unique([sessionCandidateId, kind])
   @@index([status, scheduledFor])
+}
+
+// ---------------------------------------------------------------------------
+// Google Meet bot
+//
+// The recruiter pastes a meeting link they already created. A Playwright-driven
+// Chromium signs in with a dedicated bot account, joins that meeting, and runs
+// the same interview engine the built-in room uses. One run per interview.
+// ---------------------------------------------------------------------------
+
+enum MeetBotStatus {
+  SCHEDULED
+  STARTING
+  OPENING_MEETING
+  PRE_JOIN
+  WAITING_FOR_ADMISSION
+  JOINED
+  WAITING_FOR_CANDIDATE
+  INTRODUCTION
+  QUESTIONING
+  FOLLOW_UP
+  FINAL_QUESTION
+  ENDING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+model MeetBotRun {
+  id                 String        @id @default(uuid())
+  sessionCandidateId String        @unique
+  /// The link as the recruiter supplied it. Held per run rather than read from
+  /// the session, so replacing a link before the interview never rewrites the
+  /// history of a run that already happened.
+  meetLink           String
+  /// GOOGLE_MEET | ZOOM | MS_TEAMS — which platform the link points at. Only
+  /// Google Meet is driven today; the rest are stored but refused at launch.
+  platform           String        @default("GOOGLE_MEET")
+  status             MeetBotStatus @default(SCHEDULED)
+  /// One line of detail for the current status, surfaced in the dashboard.
+  statusDetail       String?
+  errorCode          String?
+  errorMessage       String?
+
+  /// When the bot opens the meeting: the scheduled start minus the lobby lead
+  /// time, so it is already admitted and waiting when the candidate arrives.
+  joinAt          DateTime
+  startedAt       DateTime?
+  joinedAt        DateTime?
+  /// First moment another participant was seen in the meeting.
+  candidateSeenAt DateTime?
+  endedAt         DateTime?
+  attempts        Int       @default(0)
+
+  /// The process that owns this run. Claimed with a conditional update so two
+  /// replicas — or two overlapping scheduler ticks — cannot launch one bot twice.
+  lockedBy String?
+  lockedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sessionCandidate SessionCandidate @relation(fields: [sessionCandidateId], references: [id], onDelete: Cascade)
+
+  @@index([status, joinAt])
 }
 
 // ---------------------------------------------------------------------------

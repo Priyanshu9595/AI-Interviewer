@@ -5,6 +5,7 @@ import { prisma } from '../lib/prisma';
 import { EvaluationQueue } from './EvaluationQueue';
 import { RecordingService } from './RecordingService';
 import { ResumeService } from './ResumeService';
+import { MeetBotManager } from './meetingBot/MeetBotManager';
 
 /** How far ahead of the interview each reminder fires. */
 const OFFSETS: Array<{ kind: ReminderKind; ms: number; label: string }> = [
@@ -13,7 +14,28 @@ const OFFSETS: Array<{ kind: ReminderKind; ms: number; label: string }> = [
   { kind: 'T_MINUS_5M', ms: 5 * 60_000, label: '5 minutes' },
 ];
 
-const joinUrl = (accessToken: string) => `${env.APP_URL}/interview/${accessToken}`;
+/**
+ * Where a candidate is told to go.
+ *
+ * An interview the AI runs inside a Google Meet has to send the candidate to
+ * that meeting; the built-in room's own link would put them somewhere the
+ * interviewer is not.
+ */
+const joinUrlFor = (sc: { accessToken: string; meetBotRun?: { meetLink: string } | null }) =>
+  sc.meetBotRun?.meetLink ?? `${env.APP_URL}/interview/${sc.accessToken}`;
+
+/**
+ * Where a meeting-interview candidate writes their code.
+ *
+ * Sent with the invitation as well as posted in the meeting chat: a chat panel
+ * the candidate has collapsed, or a client that hides it, is not a reliable way
+ * to hand someone a link they need mid-interview.
+ */
+const codingUrlFor = (sc: {
+  accessToken: string;
+  meetBotRun?: unknown;
+  interviewSession: { codingEnabled: boolean };
+}) => (sc.meetBotRun && sc.interviewSession.codingEnabled ? `${env.APP_URL}/interview/${sc.accessToken}/code` : undefined);
 
 export class SchedulerService {
   private static timer: NodeJS.Timeout | null = null;
@@ -52,7 +74,7 @@ export class SchedulerService {
     await prisma.reminder.createMany({ data: rows, skipDuplicates: true });
   }
 
-  /** Re-times pending reminders after a session is rescheduled. */
+  /** Re-times pending reminders and bot launches after a session moves. */
   static async reschedule(interviewSessionId: string) {
     const session = await prisma.interviewSession.findUnique({
       where: { id: interviewSessionId },
@@ -62,17 +84,27 @@ export class SchedulerService {
 
     const startsAt = session.scheduledAt.getTime();
     const now = Date.now();
+    const candidateIds = session.candidates.map((c) => c.id);
 
     for (const o of OFFSETS) {
       const when = new Date(startsAt - o.ms);
       await prisma.reminder.updateMany({
-        where: {
-          kind: o.kind,
-          status: 'PENDING',
-          sessionCandidateId: { in: session.candidates.map((c) => c.id) },
-        },
+        where: { kind: o.kind, status: 'PENDING', sessionCandidateId: { in: candidateIds } },
         data: { scheduledFor: when, status: startsAt - o.ms < now ? 'SKIPPED' : 'PENDING' },
       });
+    }
+
+    // The bot's launch time has to move with the interview. Without this a
+    // rescheduled session keeps its original joinAt, so the bot either turns up
+    // to a meeting that is not happening yet or — far more often — is written
+    // off as a missed window and never joins at all.
+    const { count } = await prisma.meetBotRun.updateMany({
+      where: { sessionCandidateId: { in: candidateIds }, status: 'SCHEDULED' },
+      data: { joinAt: new Date(startsAt - env.MEET_BOT_JOIN_LEAD_MINUTES * 60_000) },
+    });
+
+    if (count) {
+      console.log(`[scheduler] re-timed ${count} bot launch(es) for session ${interviewSessionId}`);
     }
   }
 
@@ -118,6 +150,10 @@ export class SchedulerService {
     try {
       await this.sendDueReminders();
       await this.activateDueSessions();
+      // Launches the Google Meet bot for interviews whose lead time has come.
+      // Runs before the no-show sweep so a bot is already waiting in the
+      // meeting by the time anyone is considered late.
+      await MeetBotManager.startDue();
       // Nudge before marking absent, so a candidate is never written off in the
       // same tick that they were first chased.
       await this.sendNoShowNudges();
@@ -141,7 +177,7 @@ export class SchedulerService {
       where: { status: 'PENDING', scheduledFor: { lte: new Date() }, attempts: { lt: 3 } },
       include: {
         sessionCandidate: {
-          include: { candidate: true, interviewSession: true },
+          include: { candidate: true, interviewSession: true, meetBotRun: true },
         },
       },
       take: 50,
@@ -163,9 +199,10 @@ export class SchedulerService {
             to: sc.candidate.email,
             name: sc.candidate.name,
             role: session.title,
-            joinUrl: joinUrl(sc.accessToken),
+            joinUrl: joinUrlFor(sc),
             scheduledAt: session.scheduledAt,
             durationMinutes: session.durationMinutes,
+            codingUrl: codingUrlFor(sc),
           });
           await prisma.sessionCandidate.update({
             where: { id: sc.id },
@@ -177,7 +214,7 @@ export class SchedulerService {
             to: sc.candidate.email,
             name: sc.candidate.name,
             role: session.title,
-            joinUrl: joinUrl(sc.accessToken),
+            joinUrl: joinUrlFor(sc),
             scheduledAt: session.scheduledAt,
             timeframe: label,
           });
@@ -237,7 +274,7 @@ export class SchedulerService {
         },
         reminders: { none: { kind: 'NO_SHOW_NUDGE' } },
       },
-      include: { candidate: true, interviewSession: true },
+      include: { candidate: true, interviewSession: true, meetBotRun: true },
       take: 50,
     });
 
@@ -247,7 +284,7 @@ export class SchedulerService {
           to: sc.candidate.email,
           name: sc.candidate.name,
           role: sc.interviewSession.title,
-          joinUrl: joinUrl(sc.accessToken),
+          joinUrl: joinUrlFor(sc),
         });
 
         await prisma.reminder.create({
@@ -288,12 +325,23 @@ export class SchedulerService {
    */
   private static async markNoShows() {
     const cutoff = new Date(Date.now() - env.NO_SHOW_GRACE_MINUTES * 60_000);
+    // A meeting interview is not late until the bot itself gives up, which it
+    // does on its own clock — the primary wait plus the grace window. Writing
+    // the candidate off here would end an interview that is still sitting in
+    // the meeting waiting for them.
+    const meetBotStillWaiting = new Date(
+      Date.now() - (env.MEET_BOT_CANDIDATE_WAIT_MINUTES + env.MEET_BOT_CANDIDATE_GRACE_MINUTES) * 60_000,
+    );
 
     const stragglers = await prisma.sessionCandidate.findMany({
       where: {
         status: 'INVITED',
         joinedAt: null,
         interviewSession: { scheduledAt: { lte: cutoff }, status: { in: ['ACTIVE', 'SCHEDULED'] } },
+        OR: [
+          { meetBotRun: { is: null } },
+          { interviewSession: { scheduledAt: { lte: meetBotStillWaiting } } },
+        ],
       },
       select: { id: true },
       take: 100,

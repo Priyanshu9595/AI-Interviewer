@@ -5,3 +5,7 @@ dist/
 uploads/
 temp_execution/
 *.log
+
+# The Google Meet bot's signed-in Chromium profile. This is a credential: it
+# grants access to the bot's Google account. Never commit it.
+.meet-bot-profile/

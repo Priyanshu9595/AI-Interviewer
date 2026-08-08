@@ -141,6 +141,14 @@ export class EmailService {
     joinUrl: string;
     scheduledAt: Date;
     durationMinutes: number;
+    /**
+     * Where the coding exercise will appear, for interviews the AI runs inside
+     * a meeting call. Sent up front because a meeting has no shared editor: the
+     * interviewer posts this link in the chat when the round starts, and a
+     * candidate whose chat is collapsed or whose client hides it would
+     * otherwise have no way to reach it.
+     */
+    codingUrl?: string;
   }) {
     const when = formatWhen(args.scheduledAt);
     const body = `
@@ -151,6 +159,12 @@ export class EmailService {
         <tr><td style="padding:6px 0;color:#64748b;">Duration</td><td style="padding:6px 0;color:#0f172a;font-weight:500;">${args.durationMinutes} minutes</td></tr>
       </table>
       ${button(args.joinUrl, 'Join the interview')}
+      ${
+        args.codingUrl
+          ? `<p style="font-size:13px;color:#64748b;margin-top:20px;">This interview includes a short coding exercise. When the interviewer asks for it, open your code editor here — it stays open for the whole interview:<br>
+             <a href="${args.codingUrl}" style="color:#4f46e5;">${args.codingUrl}</a></p>`
+          : ''
+      }
       <p style="font-size:13px;color:#64748b;">Use a quiet room, a working microphone and a stable connection. The link is unique to you — please do not share it.</p>`;
 
     await this.send({
@@ -158,7 +172,10 @@ export class EmailService {
       toName: args.name,
       subject: `Interview invitation — ${args.role}`,
       html: shell('Your interview is scheduled', body),
-      text: `Hi ${args.name},\n\nYou are invited to an interview for ${args.role}.\nWhen: ${when}\nDuration: ${args.durationMinutes} minutes\nJoin: ${args.joinUrl}\n\nThis link is unique to you.`,
+      text:
+        `Hi ${args.name},\n\nYou are invited to an interview for ${args.role}.\nWhen: ${when}\nDuration: ${args.durationMinutes} minutes\nJoin: ${args.joinUrl}\n` +
+        (args.codingUrl ? `Code editor: ${args.codingUrl}\n` : '') +
+        `\nThis link is unique to you.`,
     });
   }
 

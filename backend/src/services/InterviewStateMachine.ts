@@ -342,6 +342,42 @@ export class InterviewStateMachine extends EventEmitter {
     await this.finish('abandoned');
   }
 
+  /**
+   * Skips the remaining questions and moves straight to the closing round.
+   *
+   * For callers that own the clock rather than the script — the Google Meet
+   * bot runs inside a slot the recruiter booked, so it has to wrap up on time
+   * even with questions left. The interview still ends properly and is still
+   * scored, because the interviewer chose to stop rather than the candidate.
+   */
+  async concludeEarly() {
+    if (['CLOSING', 'COMPLETED', 'INCOMPLETE', 'ABSENT'].includes(this.state)) return;
+
+    // A turn already in flight owns the conversation; interrupting it would
+    // talk over the interviewer. Wait briefly, then take over regardless.
+    for (let i = 0; i < 20 && this.busy; i++) {
+      await new Promise((r) => setTimeout(r, 250));
+    }
+
+    if (['CLOSING', 'COMPLETED', 'INCOMPLETE', 'ABSENT'].includes(this.state)) return;
+
+    this.busy = true;
+    try {
+      // advance() increments first, so land it one short of the end and let it
+      // fall off into the closing round through the normal path.
+      this.index = Math.max(this.index, this.questions.length - 1);
+      this.state = 'IN_ROUND';
+      await this.advance('We are coming up on time, so I will stop there.');
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  /** Whether a turn is currently being processed. */
+  get isBusy(): boolean {
+    return this.busy;
+  }
+
   /** Called when a coding submission has been graded so the round can resume. */
   async codingSubmitted(summary: { passed: number; total: number }) {
     if (this.state !== 'CODING') return;

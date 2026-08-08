@@ -3,7 +3,10 @@
     "target": "ES2022",
     "module": "node16",
     "moduleResolution": "node16",
-    "lib": ["ES2022"],
+    // DOM is here for the Google Meet bot only: the callbacks passed to
+    // Playwright's page.evaluate run inside Chromium, not in Node, so they need
+    // document, HTMLElement and friends to typecheck.
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["node"],
     "rootDir": "./src",
     "outDir": "./dist",

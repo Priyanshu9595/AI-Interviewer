@@ -13,8 +13,21 @@ export interface SpeechResult {
   speechFinal: boolean;
 }
 
+/**
+ * How the audio being streamed is encoded.
+ *
+ * The browser sends a WebM/Opus container, which Deepgram sniffs on its own.
+ * The Google Meet bot taps WebRTC tracks and produces bare PCM, which has no
+ * header to sniff — the rate and encoding have to be declared up front.
+ */
+export interface AudioFormat {
+  encoding: 'linear16';
+  sampleRate: number;
+  channels?: number;
+}
+
 /** Deepgram's live transcription endpoint. */
-function socketUrl(language: string): string {
+function socketUrl(language: string, format?: AudioFormat): string {
   const params = new URLSearchParams({
     model: 'nova-2',
     // Deepgram wants "en", "hi", "es"; our sessions carry locales like "en-IN".
@@ -27,6 +40,12 @@ function socketUrl(language: string): string {
     utterance_end_ms: '3000',
     vad_events: 'true',
   });
+
+  if (format) {
+    params.set('encoding', format.encoding);
+    params.set('sample_rate', String(format.sampleRate));
+    params.set('channels', String(format.channels ?? 1));
+  }
 
   return `wss://api.deepgram.com/v1/listen?${params}`;
 }
@@ -50,6 +69,8 @@ export class SpeechSession extends EventEmitter {
   constructor(
     private readonly sessionCandidateId: string,
     private readonly language: string,
+    /** Omit for container formats Deepgram can identify by itself. */
+    private readonly format?: AudioFormat,
   ) {
     super();
   }
@@ -60,7 +81,7 @@ export class SpeechSession extends EventEmitter {
       return;
     }
 
-    const socket = new WebSocket(socketUrl(this.language), {
+    const socket = new WebSocket(socketUrl(this.language, this.format), {
       headers: { Authorization: `Token ${env.DEEPGRAM_API_KEY}` },
     });
     this.socket = socket;

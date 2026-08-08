@@ -11,6 +11,7 @@ import { CodeExecutorService, TestCase } from '../services/CodeExecutorService';
 import { EvaluationQueue } from '../services/EvaluationQueue';
 import { EvaluationService } from '../services/EvaluationService';
 import { InsightService } from '../services/InsightService';
+import { MeetBotManager } from '../services/meetingBot/MeetBotManager';
 import { TranscriptService } from '../services/TranscriptService';
 import { createReadStream } from 'fs';
 import { env } from '../lib/env';
@@ -156,6 +157,14 @@ export const runCode = async (req: Request, res: Response) => {
     },
   });
 
+  // An interview running inside a meeting has no socket from the candidate, so
+  // this is how the submission reaches the interviewer waiting in the call. A
+  // no-op for the built-in room, which reports over its own socket.
+  await MeetBotManager.notifyCodingSubmitted(sc.id, {
+    passed: execution.passed,
+    total: execution.total,
+  }).catch(() => {});
+
   res.json({
     submissionId: submission.id,
     passed: execution.passed,
@@ -166,6 +175,57 @@ export const runCode = async (req: Request, res: Response) => {
     cases: execution.cases.filter((c) => !c.hidden),
     hiddenPassed: execution.cases.filter((c) => c.hidden && c.passed).length,
     hiddenTotal: execution.cases.filter((c) => c.hidden).length,
+  });
+};
+
+/**
+ * The coding exercise for a meeting interview.
+ *
+ * The built-in room receives its challenge over the interview socket. A
+ * candidate in a Google Meet, Zoom or Teams call has no such socket — they open
+ * a link — so the same content is served here instead.
+ */
+export const getCodingChallenge = async (req: Request, res: Response) => {
+  const sc = await bySessionToken(param(req, 'token'));
+
+  if (!sc.interviewSession.codingEnabled) throw forbidden('Coding is not enabled for this interview');
+
+  const questions = await prisma.question.findMany({
+    where: { questionSet: { interviewSessionId: sc.interviewSessionId }, category: 'CODING' },
+    orderBy: { order: 'asc' },
+  });
+
+  if (!questions.length) throw notFound('No coding exercise has been set for this interview');
+
+  const submitted = await prisma.codingSubmission.findMany({
+    where: { sessionCandidateId: sc.id },
+    select: { questionId: true },
+  });
+  const done = new Set(submitted.map((s) => s.questionId));
+
+  // The first unanswered one is the one on the table; if all are answered, the
+  // last is shown read-only so the candidate can see what they sent.
+  const current = questions.find((q) => !done.has(q.id)) ?? questions[questions.length - 1]!;
+  const meta = (current.meta ?? {}) as Record<string, unknown>;
+
+  res.json({
+    candidateName: sc.candidate.name,
+    jobTitle: sc.interviewSession.title,
+    alreadySubmitted: done.has(current.id),
+    remaining: questions.filter((q) => !done.has(q.id)).length,
+    question: {
+      id: current.id,
+      title: meta.title ?? 'Coding challenge',
+      prompt: current.content,
+      constraints: meta.constraints ?? [],
+      starterCode: meta.starterCode ?? '',
+      difficulty: current.difficulty,
+      skill: current.skill,
+      // Hidden test cases must never reach the browser.
+      sampleTests: Array.isArray(meta.testCases)
+        ? (meta.testCases as Array<{ input: string; output: string; hidden?: boolean }>).filter((t) => !t.hidden)
+        : [],
+    },
   });
 };
 

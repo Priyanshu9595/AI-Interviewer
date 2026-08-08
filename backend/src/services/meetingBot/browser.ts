@@ -151,6 +151,9 @@ function chromiumArgs(opts: Required<Pick<LaunchOptions, 'muteOutput' | 'fakeDev
     '--disable-popup-blocking',
     '--disable-features=Translate,MediaRouter,OptimizationHints,CalculateNativeWinOcclusion',
     '--window-size=1280,800',
+    // Memory-saving flags for Render Free Tier (512MB RAM)
+    '--disable-dev-shm-usage',
+    '--js-flags="--max-old-space-size=256"',
     // Screen sharing opens a native picker that Playwright cannot reach — it is
     // browser chrome, not page content. These name the tab to choose in
     // advance, so the picker resolves itself. Both spellings are passed because
@@ -212,7 +215,9 @@ export async function launchBrowser(opts: LaunchOptions = {}): Promise<BotBrowse
     profileDir = await fs.mkdtemp(path.join(os.tmpdir(), 'meet-bot-'));
     temporary = true;
 
-    if (signedIn) {
+    if (env.GOOGLE_BOT_COOKIES) {
+      // Cookies will be injected into the context dynamically, no profile copy needed.
+    } else if (signedIn) {
       try {
         await cloneProfile(MASTER_PROFILE_DIR, profileDir);
       } catch (err) {
@@ -270,6 +275,15 @@ export async function launchBrowser(opts: LaunchOptions = {}): Promise<BotBrowse
     throw new BotError('BROWSER_LAUNCH_FAILED', cause.detail ?? cause.message);
   }
 
+  if (env.GOOGLE_BOT_COOKIES) {
+    try {
+      const cookies = JSON.parse(Buffer.from(env.GOOGLE_BOT_COOKIES, 'base64').toString('utf-8'));
+      await context.addCookies(cookies);
+    } catch (e) {
+      console.warn('[meet-bot] Failed to parse or inject GOOGLE_BOT_COOKIES:', (e as Error).message);
+    }
+  }
+
   await context
     .grantPermissions(['microphone', 'camera'], { origin: 'https://meet.google.com' })
     .catch(() => {
@@ -314,6 +328,8 @@ export async function launchBrowser(opts: LaunchOptions = {}): Promise<BotBrowse
  * with different fixes.
  */
 export async function hasSignedInProfile(): Promise<boolean> {
+  if (env.GOOGLE_BOT_COOKIES) return true;
+
   try {
     const stat = await fs.stat(MASTER_PROFILE_DIR);
     if (!stat.isDirectory()) return false;

@@ -81,6 +81,10 @@ const envSchema = z.object({
   /// Sign in once with `npm run bot:login`; nothing else ever authenticates.
   GOOGLE_BOT_PROFILE_PATH: z.string().default('./.meet-bot-profile'),
 
+  /// Base64 encoded JSON string of Google login cookies.
+  /// Used to bypass the need for a persistent disk on serverless/free tiers.
+  GOOGLE_BOT_COOKIES: z.string().optional(),
+
   /// Real Chrome handles Meet better than bundled Chromium. `chromium` uses
   /// Playwright's own build, which needs no separate Chrome install.
   MEET_BOT_BROWSER_CHANNEL: z.enum(['chrome', 'msedge', 'chromium']).default('chrome'),

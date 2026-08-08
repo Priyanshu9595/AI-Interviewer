@@ -14,23 +14,15 @@ services:
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
     region: singapore
-    # Each meeting is a full browser at roughly 400 MB. Starter's 512 MB cannot
-    # hold Node plus one Chromium; standard is the realistic floor, and the plan
-    # has to be paid regardless — free instances sleep after 15 minutes idle,
-    # which stops the scheduler and means no interview ever joins by itself.
-    plan: standard
+    # This service is configured for the free tier.
+    # Note: Free instances sleep after 15 minutes of inactivity. You must use a
+    # ping service (like cron-job.org) to hit /health if you want the bot to auto-join.
+    plan: free
     healthCheckPath: /health
     # The interview state machine lives in memory and the scheduler must run in
     # exactly one place, so this service does not scale horizontally.
     numInstances: 1
 
-    disk:
-      name: bot-profile
-      # Matches GOOGLE_BOT_PROFILE_PATH in the Dockerfile. Without a disk the
-      # signed-in Google session is lost on every deploy and every interview
-      # fails with SIGN_IN_REQUIRED.
-      mountPath: /var/data
-      sizeGB: 2
 
     envVars:
       - key: NODE_ENV
@@ -59,10 +51,12 @@ services:
       - key: DEEPGRAM_API_KEY
         sync: false
 
+      - key: GOOGLE_BOT_COOKIES
+        sync: false
       - key: MEET_BOT_ENABLED
         value: "true"
       - key: GOOGLE_BOT_PROFILE_PATH
-        value: /var/data/meet-bot-profile
+        value: /tmp/meet-bot-profile
       # The Playwright image ships Chromium, not Google Chrome. Naming it
       # avoids a failed launch attempt before the fallback.
       - key: MEET_BOT_BROWSER_CHANNEL

@@ -39,9 +39,18 @@ swap_size_mb = 1024
   # on a machine with no monitor. Meeting clients behave better that way.
   MEET_BOT_HEADLESS = 'false'
   MEET_BOT_DISPLAY_NAME = 'AI Interviewer'
+  # A 3:00 pm interview is joined at 3:00 pm. Anything above zero has the bot
+  # sitting in an empty meeting, and the candidate seeing it arrive early.
+  #
+  # Do not also set this as a Fly secret. Secrets override `[env]` silently, so
+  # a leftover secret makes this line a lie — which is exactly what happened
+  # once, with the bot joining a minute early while this file said zero.
   MEET_BOT_JOIN_LEAD_MINUTES = '0'
   MEET_BOT_CANDIDATE_WAIT_MINUTES = '5'
   MEET_BOT_CANDIDATE_GRACE_MINUTES = '2'
+  # Off: Meet shares a tab's audio with its picture, and the picker is steered
+  # by a title match rather than clicked, so a miss shares the call into itself.
+  MEET_BOT_SHARE_CODE_SCREEN = 'false'
   # One meeting at a time on 2 GB. A call with video decoding can reach a
   # gigabyte on its own; raise this only alongside `memory` below.
   MEET_BOT_MAX_CONCURRENT = '1'

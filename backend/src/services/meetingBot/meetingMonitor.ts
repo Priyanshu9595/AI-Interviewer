@@ -99,6 +99,18 @@ export class MeetingMonitor extends EventEmitter {
 
     try {
       const snapshot = await this.driver.observe(this.page);
+
+      // Logged whenever the reading changes. A head-count stuck at 0 or 1 while
+      // the bot is plainly hearing people is the signature of drifted
+      // selectors, and without this it is invisible — the interview simply
+      // waits out its window and records a no-show.
+      if (this.last?.participants !== snapshot.participants) {
+        console.log(
+          `[meet-bot] participants: ${snapshot.participants}` +
+            `${snapshot.waitingRoomOccupied ? ', someone waiting to be let in' : ''}`,
+        );
+      }
+
       this.last = snapshot;
       this.emit('snapshot', snapshot);
 

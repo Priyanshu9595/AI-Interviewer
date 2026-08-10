@@ -81,6 +81,8 @@ export class MeetBotSession extends EventEmitter {
   private audioWarning: string | null = null;
   /** Reported once per interview; the monitor would otherwise repeat it. */
   private reportedAdmissionProblem = false;
+  /** Same, for a candidate the bot can hear but cannot see in the roster. */
+  private notedHeardButNotSeen = false;
   private scheduledAt = new Date();
   private durationMinutes = 30;
   private candidateName = 'the candidate';
@@ -441,7 +443,26 @@ export class MeetBotSession extends EventEmitter {
       if (this.abort.signal.aborted) throw new BotError('STOPPED_BY_RECRUITER');
       if (this.finished) return;
 
-      const present = this.monitor?.candidateHasJoined ?? false;
+      // Two independent signals, because the first one is not trustworthy on
+      // its own. Counting participants means reading the meeting client's own
+      // interface, and when those selectors drift the bot decides it is alone
+      // in a room it can plainly hear. Hearing somebody speak cannot be argued
+      // with — a meeting client does not generate speech by itself.
+      const seen = this.monitor?.candidateHasJoined ?? false;
+      const heard = this.audio?.hasHeardSomeoneSpeak ?? false;
+      const present = seen || heard;
+
+      if (heard && !seen && !this.notedHeardButNotSeen) {
+        this.notedHeardButNotSeen = true;
+        console.warn(
+          `[meet-bot ${this.interviewId}] someone is audible but the participant count does not show them — ` +
+            'starting on the audio. The participant selectors for this platform need attention.',
+        );
+        if (this.browser && !this.browser.page.isClosed()) {
+          void captureFailure(this.browser.page, this.interviewId, 'participants_miscounted').catch(() => {});
+        }
+      }
+
       const knocking = this.monitor?.someoneWaiting ?? false;
       const now = Date.now();
 

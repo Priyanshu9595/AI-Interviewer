@@ -76,6 +76,7 @@ export class AudioManager extends EventEmitter {
   private disposed = false;
   private speaking = false;
   private audioSeen = false;
+  private heardSound = false;
   private captureTimers: NodeJS.Timeout[] = [];
 
   constructor(
@@ -98,6 +99,19 @@ export class AudioManager extends EventEmitter {
   /** Whether any remote audio has ever arrived — proof the tap is working. */
   get hasHeardAudio(): boolean {
     return this.audioSeen;
+  }
+
+  /**
+   * Whether actual sound, rather than silence, has come out of the meeting.
+   *
+   * This is the most dependable evidence that somebody else is present.
+   * Counting participants means reading the client's own interface, and when
+   * those selectors drift the bot concludes it is alone in a room it can
+   * plainly hear — which is how an interview was scored a no-show while the
+   * candidate sat in it for seven minutes.
+   */
+  get hasHeardSomeoneSpeak(): boolean {
+    return this.heardSound;
   }
 
   // -------------------------------------------------------------------------
@@ -244,6 +258,22 @@ export class AudioManager extends EventEmitter {
     if (!chunk.length) return;
 
     this.audioSeen = true;
+
+    // Frames arrive continuously once anything is connected, including pure
+    // silence, so their existence proves nothing about who is in the room.
+    // Actual sound does: a meeting client does not generate speech on its own.
+    if (!this.heardSound) {
+      for (let i = 0; i + 1 < chunk.length; i += 64) {
+        const sample = chunk.readInt16LE(i);
+        // ~1% of full scale. Above the noise floor of an open microphone,
+        // far below anything that could be mistaken for silence.
+        if (sample > 300 || sample < -300) {
+          this.heardSound = true;
+          console.log(`[meet-bot ${this.opts.interviewId}] heard real audio — somebody is in the meeting`);
+          break;
+        }
+      }
+    }
     this.speech ??= this.openSpeechSession();
     this.speech.send(chunk);
   }

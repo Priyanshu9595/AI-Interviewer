@@ -117,14 +117,23 @@ const SELECTORS = {
     ],
   },
 
-  /** The leave button only exists in-call, so its presence is proof of joining. */
+  /**
+   * Proof the bot is actually in the call.
+   *
+   * Only the leave control qualifies. `[data-meeting-code]` used to be in here
+   * and is present on the pre-join screen as well — which made the bot decide
+   * it was already inside, skip pressing "Join now" entirely, and then sit on
+   * "Ready to join?" for the whole interview reporting itself as joined.
+   *
+   * Anything added here must be absent before joining, not merely present
+   * after.
+   */
   inCall: {
     description: 'in-call controls',
     strategies: [
       { kind: 'role', role: 'button', name: /leave call/i },
       { kind: 'css', value: '[aria-label*="Leave call" i]' },
-      { kind: 'css', value: 'button[jsname="CQylAd"]' },
-      { kind: 'css', value: '[data-meeting-code]' },
+      { kind: 'css', value: '[aria-label*="Leave the call" i]' },
     ],
   },
 
@@ -361,7 +370,7 @@ export const googleMeetDriver: PlatformDriver = {
   },
 
   async observe(page): Promise<MeetingObservation> {
-    const inCall = await isPresent(page, SELECTORS.inCall);
+    const inCall = await isInCall(page);
 
     if (await isPresent(page, SELECTORS.meetingEnded)) {
       const text = (await readNotice(page, SELECTORS.meetingEnded)).toLowerCase();
@@ -496,7 +505,7 @@ async function waitForPreJoin(page: Page): Promise<boolean> {
   const deadline = Date.now() + 60_000;
 
   while (Date.now() < deadline) {
-    if (await isPresent(page, SELECTORS.inCall)) return true;
+    if (await isInCall(page)) return true;
     if (await findFirst(page, SELECTORS.joinButton, { timeoutMs: 0 })) return false;
 
     await assertNoGoogleWall(page);
@@ -557,11 +566,24 @@ async function enterGuestNameIfAsked(page: Page, displayName: string): Promise<v
  * bot sitting on "Ready to join?" indefinitely with no error to report. So the
  * click is repeated until the page actually changes.
  */
+/**
+ * Whether the bot is really in the call.
+ *
+ * Two conditions, because one is not enough. A leave control has to be on
+ * screen — and the join control must not be, since the pre-join screen offers
+ * one and the call never does. Trusting a single positive marker is what let
+ * the bot skip pressing "Join now" and then report itself as joined.
+ */
+async function isInCall(page: Page): Promise<boolean> {
+  if (await isPresent(page, SELECTORS.joinButton)) return false;
+  return isPresent(page, SELECTORS.inCall);
+}
+
 async function pressJoin(page: Page, opts: PlatformJoinOptions): Promise<void> {
   const attempts = 4;
 
   for (let attempt = 1; attempt <= attempts; attempt++) {
-    if (await isPresent(page, SELECTORS.inCall)) return;
+    if (await isInCall(page)) return;
     assertNotAborted(opts.signal);
 
     const button = await findFirst(page, SELECTORS.joinButton, { timeoutMs: attempt === 1 ? 20_000 : 5_000 });
@@ -607,7 +629,7 @@ async function pressJoin(page: Page, opts: PlatformJoinOptions): Promise<void> {
     // click is retried rather than waited out.
     for (let i = 0; i < 8; i++) {
       await page.waitForTimeout(1_000);
-      if (await isPresent(page, SELECTORS.inCall)) return;
+      if (await isInCall(page)) return;
       if (await isPresent(page, SELECTORS.waitingForAdmission)) {
         // Knocking. Stop clicking and wait properly.
         await waitUntilAdmitted(page, opts);
@@ -634,7 +656,7 @@ async function waitUntilAdmitted(page: Page, opts: PlatformJoinOptions): Promise
   for (;;) {
     assertNotAborted(opts.signal);
 
-    if (await isPresent(page, SELECTORS.inCall)) return;
+    if (await isInCall(page)) return;
 
     if (await isPresent(page, SELECTORS.admissionDenied)) {
       throw new BotError('ADMISSION_DENIED', await readNotice(page, SELECTORS.admissionDenied));

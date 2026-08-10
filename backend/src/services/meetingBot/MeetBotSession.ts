@@ -811,6 +811,14 @@ export class MeetBotSession extends EventEmitter {
     this.silenceTimer = setTimeout(() => {
       if (this.finished || !this.machine) return;
 
+      // Nothing has been asked yet — the interviewer said hello and is waiting
+      // to be greeted back. The machine owns what to do about that, and what
+      // it does not do is pretend a question went unanswered.
+      if (this.machine.state === 'GREETING') {
+        void this.machine.greetingUnanswered();
+        return;
+      }
+
       this.silencePrompts++;
 
       if (this.silencePrompts > MAX_SILENCE_PROMPTS) {

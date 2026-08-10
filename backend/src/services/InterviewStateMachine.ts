@@ -32,6 +32,16 @@ export interface StateMachineEvents {
 
 const ROUND_ORDER: QuestionCategory[] = ['INTRO', 'HR', 'TECHNICAL', 'SCENARIO', 'PROJECT', 'CODING'];
 
+/**
+ * How many times to ask a silent candidate to say hello before giving up.
+ *
+ * At the caller's 45-second spacing that is four prompts over three minutes,
+ * with the interview closing just before the four-minute mark — long enough to
+ * find the unmute button, short enough not to spend a booked slot on someone
+ * who is not there.
+ */
+const MAX_GREETING_PROMPTS = 4;
+
 /** Strips the filler a transcript arrives wrapped in, so patterns can match. */
 function bare(text: string): string {
   return text
@@ -90,6 +100,8 @@ export class InterviewStateMachine extends EventEmitter {
   private closingPrompts = 0;
   /** Closing questions answered, capped so the interview cannot run forever. */
   private closingAnswers = 0;
+  /** Times we have asked a joined-but-silent candidate to say hello. */
+  private greetingPrompts = 0;
   private startedAt: Date | null = null;
   private candidateName = 'Candidate';
   private askedIdentity = false;
@@ -423,6 +435,52 @@ export class InterviewStateMachine extends EventEmitter {
       round: this.current()?.category ?? 'IN_ROUND',
       expectsAnswer: true,
     });
+  }
+
+  /**
+   * Silence after "Hello — shall we begin?", before the candidate has said a
+   * single word.
+   *
+   * This is not an unanswered question and must not be treated as one. Nothing
+   * has been asked yet: the interviewer said hello and is waiting to be said
+   * hello back to. Scoring that as a skipped answer and moving on walks the
+   * entire script past someone who never spoke — a full transcript of
+   * "(no answer given)", a report, and a candidate who was sitting there the
+   * whole time with a microphone that was not working.
+   *
+   * So we wait, and keep asking. What eventually runs out is patience, not the
+   * script: if nothing ever comes back the interview stops honestly as
+   * incomplete rather than pretending to have happened.
+   */
+  async greetingUnanswered() {
+    if (this.busy || this.state !== 'GREETING') return;
+
+    this.greetingPrompts++;
+
+    if (this.greetingPrompts > MAX_GREETING_PROMPTS) {
+      await InsightService.record(this.sessionCandidateId, [
+        {
+          type: 'LONG_PAUSE',
+          message: 'Joined but never responded to the greeting.',
+          severity: 1,
+        },
+      ]);
+      await this.say(
+        'I have not been able to hear anything from you, so I will stop here rather than carry on by myself. Please check your microphone and contact the recruiting team to rearrange.',
+        { round: 'GREETING', expectsAnswer: false },
+      );
+      await this.finish('abandoned');
+      return;
+    }
+
+    const line =
+      this.greetingPrompts === 1
+        ? `Can you hear me, ${this.candidateName}? Say hello whenever you are ready and we will make a start.`
+        : this.greetingPrompts === 2
+          ? 'I still cannot hear you. Have a look at your microphone — you may be muted — and just say hello when it is working.'
+          : 'Take your time. I will wait here until I hear you.';
+
+    await this.say(line, { round: 'GREETING', expectsAnswer: true });
   }
 
   async candidateLeft() {

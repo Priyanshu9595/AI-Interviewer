@@ -6,3 +6,9 @@ node_modules/
 # copied to the server. This is a credential: it holds a live Google session for
 # the bot account. Never commit it.
 bot-profile/
+
+# A scratch checkout with its own .git, committed by accident as a submodule
+# pointer with no .gitmodules entry — which made every CI checkout fail with
+# "No url found for submodule path" and exit 128. Its contents were never in
+# this repository, only a dangling pointer to a commit nobody has.
+temp-repo/

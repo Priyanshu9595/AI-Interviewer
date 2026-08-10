@@ -64,7 +64,8 @@
       "Bash(curl -s -m 10 https://ai-interviewer-api-priyanshu.fly.dev/health)",
       "Bash(node -e \"const j=require\\('/tmp/h.json'\\);console.log\\('  status      :',j.status\\);console.log\\('  database    :',j.database\\);console.log\\('  emailSender :',j.emailSender\\);console.log\\('  speech      :',j.speechToText\\);console.log\\('  meetBot     :',JSON.stringify\\(j.meetBot\\)\\);console.log\\('  uptime      :',Math.round\\(j.uptimeSeconds\\),'sec'\\)\")",
       "Read(//d/tmp/**)",
-      "Bash(curl -s -m 20 https://ai-interviewer-api-priyanshu.fly.dev/health -o health.json)"
+      "Bash(curl -s -m 20 https://ai-interviewer-api-priyanshu.fly.dev/health -o health.json)",
+      "Bash(perl -pi -e \"s/^function \\(bare|isDecline|isBareAffirmative\\)\\\\\\(/export function \\\\$1\\(/\" src/services/InterviewStateMachine.ts)"
     ]
   }
 }

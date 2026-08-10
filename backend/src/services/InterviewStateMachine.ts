@@ -32,6 +32,41 @@ export interface StateMachineEvents {
 
 const ROUND_ORDER: QuestionCategory[] = ['INTRO', 'HR', 'TECHNICAL', 'SCENARIO', 'PROJECT', 'CODING'];
 
+/** Strips the filler a transcript arrives wrapped in, so patterns can match. */
+function bare(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[.,!?]+/g, '')
+    .replace(/^(um+|uh+|er+|so|well|okay|ok|actually|i think|i guess)\b\s*/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** "No, nothing from me" — the candidate is done. */
+export function isDecline(text: string): boolean {
+  const t = bare(text);
+  if (t.split(' ').length > 8) return false; // too long to be a simple no
+  return /^(no|nope|nah|nahi+n?|not really|none|nothing|no thanks?|no thank you|i'?m good|im good|all good|that'?s (it|all)|thats (it|all)|i'?m fine|no questions?( from me)?)\b/.test(
+    t,
+  );
+}
+
+/**
+ * "Yes." — an answer to *whether* they have a question, not the question.
+ *
+ * Deliberately narrow: only a short, purely affirmative utterance counts. A
+ * candidate who says "yes, what does the team look like" has asked, and must
+ * not be sent back round to ask again. Length is the honest test here, since
+ * speech to text seldom supplies the question mark that would settle it.
+ */
+export function isBareAffirmative(text: string): boolean {
+  const t = bare(text);
+  if (t.split(' ').length > 5) return false;
+  return /^(yes|yeah|yep|yup|ya|haa+n?|sure|i do|yes i do|yes please|definitely|absolutely)( i have( a| one)?( question| questions)?)?$/.test(
+    t,
+  );
+}
+
 /**
  * Drives a single candidate's interview from joining through to completion.
  *
@@ -51,6 +86,10 @@ export class InterviewStateMachine extends EventEmitter {
   private busy = false;
   /** Follow-ups asked on the current question, capped so we always progress. */
   private probesOnCurrent = 0;
+  /** Times we have invited a candidate who said "yes" to actually ask. */
+  private closingPrompts = 0;
+  /** Closing questions answered, capped so the interview cannot run forever. */
+  private closingAnswers = 0;
   private startedAt: Date | null = null;
   private candidateName = 'Candidate';
   private askedIdentity = false;
@@ -286,7 +325,7 @@ export class InterviewStateMachine extends EventEmitter {
           await this.afterAnswer(text, payload);
           break;
         case 'CLOSING':
-          await this.finish('completed');
+          await this.afterClosing(text);
           break;
         default:
           break;
@@ -299,6 +338,55 @@ export class InterviewStateMachine extends EventEmitter {
       this.busy = false;
       this.emit('thinking', { active: false });
     }
+  }
+
+  /**
+   * The candidate's reply to "do you have any questions for me?".
+   *
+   * This used to end the interview on whatever came back, which meant an
+   * eager "Yes." was answered with goodbye — the interviewer asked a question
+   * and then hung up before the candidate could ask theirs. Nothing in a
+   * transcript looks worse.
+   *
+   * So three outcomes rather than one: a refusal closes, a bare "yes" waits,
+   * and anything else is treated as the question itself and answered.
+   */
+  private async afterClosing(text: string) {
+    const said = text.trim();
+
+    if (!said || isDecline(said)) {
+      await this.finish('completed');
+      return;
+    }
+
+    // "Yes" is not a question — it is notice that one is coming. Speech to text
+    // rarely returns the question in the same breath, so invite it and wait.
+    if (isBareAffirmative(said)) {
+      // Bounded, because a candidate who only ever says "yes" would otherwise
+      // keep the interview open forever.
+      if (this.closingPrompts >= 2) {
+        await this.finish('completed');
+        return;
+      }
+      this.closingPrompts++;
+      await this.say('Of course — please go ahead.', { round: 'CLOSING', expectsAnswer: true });
+      return;
+    }
+
+    // A real question. Answering it is the point of having asked.
+    if (this.closingAnswers >= 3 || !this.interviewer) {
+      await this.finish('completed');
+      return;
+    }
+    this.closingAnswers++;
+
+    // The caller has already written this turn to the transcript.
+    const reply = await this.interviewer.answerClosingQuestion(said);
+
+    await this.say(`${reply} Is there anything else you would like to ask?`, {
+      round: 'CLOSING',
+      expectsAnswer: true,
+    });
   }
 
   /** The candidate asked the interviewer a question mid-round. */

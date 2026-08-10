@@ -1,6 +1,6 @@
 import { InterviewerPersonality, QuestionCategory } from '@prisma/client';
 import { z } from 'zod';
-import { ChatMessage, completeJson } from '../lib/ai';
+import { ChatMessage, complete, completeJson } from '../lib/ai';
 import { env } from '../lib/env';
 import { PERSONALITIES, languageName } from './personality';
 
@@ -246,6 +246,49 @@ Decide your next turn and return the JSON object.`,
     } catch {
       return `Let me put it another way. ${currentQuestion}`;
     }
+  }
+
+  /**
+   * Answers a question the candidate asks at the very end.
+   *
+   * Separate from `handleDoubt` because that one exists to unstick a candidate
+   * mid-question: it withholds the answer on purpose and re-asks. Both are
+   * wrong here. There is no question on the table, and this is the one moment
+   * in the interview where the candidate is owed a straight answer.
+   *
+   * The interviewer knows the role and little else, so the prompt says so.
+   * Inventing a salary band or a start date would be worse than admitting the
+   * recruiting team is the one to ask.
+   */
+  async answerClosingQuestion(question: string): Promise<string> {
+    const messages = [
+      {
+        role: 'system' as const,
+        content: `You are ${this.persona.name}, interviewing ${this.ctx.candidateName} for a ${this.ctx.jobTitle} role (${this.ctx.experienceLevel}). The interview is over and the candidate is asking you a question.
+
+Answer in one or two sentences, warmly and directly. Speak ${languageName(this.ctx.language)}.
+
+You know the role, the skills it needs (${this.ctx.skills.join(', ') || 'general'}) and how this interview went. You do NOT know the salary, the start date, the team's size, the office, benefits, or when they will hear back. Never invent any of it — say the recruiting team will confirm it, and answer whatever part of the question you genuinely can.
+
+Reply with the words to say. No preamble, no JSON.`,
+      },
+      { role: 'user' as const, content: question },
+    ];
+
+    try {
+      const reply = await complete({
+        model: env.GROQ_FAST_MODEL,
+        temperature: 0.5,
+        maxTokens: 200,
+        messages,
+      });
+      const said = reply.trim();
+      if (said) return said;
+    } catch {
+      // fall through
+    }
+
+    return 'That is a good question, and the recruiting team will be able to give you a proper answer on it.';
   }
 
   closing(): string {

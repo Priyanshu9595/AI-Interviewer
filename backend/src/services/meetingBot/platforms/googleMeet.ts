@@ -527,6 +527,16 @@ async function waitForPreJoin(page: Page): Promise<boolean> {
 }
 
 /**
+ * Pages that were shown the guest-name box, and so belong to a bot Google
+ * could not identify.
+ *
+ * Kept because the fact is learned on the pre-join screen but only becomes
+ * important a minute later, when Meet refuses the join and something has to
+ * decide whether a host said no or nobody was ever asked.
+ */
+const signedOut = new WeakSet<Page>();
+
+/**
  * Fills the guest name box, when Meet is showing one.
  *
  * A signed-in bot never sees this field and the function does nothing. A
@@ -539,6 +549,7 @@ async function enterGuestNameIfAsked(page: Page, displayName: string): Promise<v
   const field = await findFirst(page, SELECTORS.nameInput, { timeoutMs: 8_000 });
   if (!field) return; // signed in — Meet already knows who this is
 
+  signedOut.add(page);
   console.log('[meet-bot] Google Meet is asking for a guest name — the bot account is not signed in');
 
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -664,7 +675,25 @@ async function waitUntilAdmitted(page: Page, opts: PlatformJoinOptions): Promise
     if (await isInCall(page)) return;
 
     if (await isPresent(page, SELECTORS.admissionDenied)) {
-      throw new BotError('ADMISSION_DENIED', await readNotice(page, SELECTORS.admissionDenied));
+      const notice = await readNotice(page, SELECTORS.admissionDenied);
+
+      // Meet turns away an uninvited stranger and a host-refused guest with the
+      // same screen, so the page cannot tell the two apart. What can is whether
+      // this bot ever proved who it was: a signed-in account is refused by a
+      // person, a signed-out one is refused by the rule printed right there —
+      // "no one can join a meeting unless invited or admitted by the host".
+      //
+      // Reporting the wrong one is not cosmetic. "The host declined" sends the
+      // recruiter to argue with a host who did nothing, while the actual fault
+      // is a bot account that is signed out on the server.
+      if (signedOut.has(page)) {
+        throw new BotError(
+          'SIGN_IN_REQUIRED',
+          `Meet refused an anonymous join: ${notice || 'you can’t join this video call'}`,
+        );
+      }
+
+      throw new BotError('ADMISSION_DENIED', notice);
     }
 
     if (await isPresent(page, SELECTORS.meetingEnded)) {

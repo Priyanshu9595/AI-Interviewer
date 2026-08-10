@@ -27,9 +27,14 @@ swap_size_mb = 1024
   # candidates are.
   TZ = 'Asia/Kolkata'
 
-  # No volume is mounted, so this is scratch space. The bot's Google session
-  # travels in the GOOGLE_BOT_COOKIES secret instead — see the deployment guide.
-  GOOGLE_BOT_PROFILE_PATH = '/tmp/meet-bot-profile'
+  # On the mounted volume, so the bot's Google session survives a restart.
+  #
+  # This used to live in /tmp with the session carried by a GOOGLE_BOT_COOKIES
+  # secret. That works for a day or two: Google rotates the session and revokes
+  # the snapshot, and the bot silently becomes an anonymous guest — which Meet
+  # turns away with "you can't join this video call". A real profile refreshes
+  # its own cookies, so it does not go stale.
+  GOOGLE_BOT_PROFILE_PATH = '/data/meet-bot-profile'
 
   MEET_BOT_ENABLED = 'true'
   # The Playwright image ships Chromium, not Google Chrome. Naming it avoids a
@@ -85,6 +90,15 @@ swap_size_mb = 1024
   grace_period = '60s'
   method = 'GET'
   path = '/health'
+
+# Holds the bot's signed-in Chromium profile, and nothing else.
+#
+# A volume ties the app to one machine in one region, which is already true
+# here: `MEET_BOT_MAX_CONCURRENT = 1` and a second machine would run a second
+# scheduler, mailing every candidate twice. Keep the count at one.
+[mounts]
+  source = 'botprofile'
+  destination = '/data'
 
 [[vm]]
   cpu_kind = 'shared'

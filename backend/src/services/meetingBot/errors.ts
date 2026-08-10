@@ -63,7 +63,7 @@ const GUIDANCE: Record<BotErrorCode, string> = {
   SERVERLESS_HOST:
     'The meeting bot cannot run on a serverless host. It needs a long-running server with a persistent disk — the browser stays open for the whole interview, and the signed-in profile has to survive between runs. Deploy the backend to Railway, Render, Fly.io or a VPS. The frontend can stay where it is.',
   SIGN_IN_REQUIRED:
-    'The bot account is signed out of this meeting platform. Run `npm run bot:login` on the server to sign in again.',
+    'The bot account is signed out of this meeting platform, so the meeting treated the interviewer as an uninvited stranger. Sign it in again on the server — `npm run bot:login` locally, or the VNC step in docs/DEPLOYMENT_FLYIO.md for a deployed one.',
   VERIFICATION_REQUIRED:
     'The meeting platform asked the bot account to complete a security check. Sign in manually with `npm run bot:login` and clear it — the bot will not attempt it.',
   GUEST_JOIN_BLOCKED:

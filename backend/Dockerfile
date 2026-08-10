@@ -9,15 +9,24 @@ FROM mcr.microsoft.com/playwright:v1.62.1-noble
 
 WORKDIR /app
 
-# x11vnc is here for one job: the one-time Google sign-in.
+# Two unrelated jobs in one layer, because an apt layer is expensive.
 #
-# A Chromium profile signed in on Windows cannot be copied to a Linux server —
-# Windows encrypts its cookie store with DPAPI, which is bound to that machine's
-# user account, so the session arrives unreadable and the bot is signed out. The
-# profile therefore has to be created on Linux, which means being able to see a
-# browser inside this image once. See `npm run bot:login:vnc`.
+# x11vnc: the one-time Google sign-in. A Chromium profile signed in on Windows
+# cannot be copied to a Linux server — Windows encrypts its cookie store with
+# DPAPI, bound to that machine's user account, so the session arrives unreadable
+# and the bot is signed out. The profile has to be created on Linux, which means
+# being able to see a browser inside this image once. See `npm run bot:login:vnc`.
+#
+# g++ and the JDK: the coding round offers JavaScript, Python, C++ and Java in
+# the editor. Node and python3 are already here; without the other two a
+# candidate can spend twenty minutes on a C++ solution and only find out it
+# cannot run when they press submit. `-headless` because nothing here draws a
+# window — it still provides javac and java, and saves a few hundred megabytes.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends x11vnc \
+    && apt-get install -y --no-install-recommends \
+        x11vnc \
+        g++ \
+        default-jdk-headless \
     && rm -rf /var/lib/apt/lists/*
 
 # Dependencies first, so a code change does not reinstall them. NODE_ENV is

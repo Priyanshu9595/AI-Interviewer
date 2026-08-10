@@ -240,6 +240,12 @@ export async function postChatMessage(
     let input = await findFirst(page, groups.chatInput, { timeoutMs: 1_000 });
 
     if (!input) {
+      // Every one of these clients fades its control bar out after a few
+      // seconds of stillness, and a faded button is not a visible one. A bot
+      // never moves its mouse, so the bar is always hidden by the time it wants
+      // to click something — which is why chat posting silently failed.
+      await wakeControls(page);
+
       if (!(await clickFirst(page, groups.openChat, { timeoutMs: 5_000 }))) return false;
       await page.waitForTimeout(1_500);
       input = await findFirst(page, groups.chatInput, { timeoutMs: 6_000 });
@@ -262,6 +268,29 @@ export async function postChatMessage(
     return true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Brings the auto-hiding control bar back on screen.
+ *
+ * Meet, Zoom and Teams all fade their controls out after a few seconds without
+ * pointer movement. A bot never moves its pointer, so by the time it wants to
+ * open the chat or start sharing, every one of those buttons is present in the
+ * DOM but invisible — and an invisible element is one `findFirst` will not
+ * return, by design.
+ *
+ * Moving the mouse across the viewport is what a person does without thinking.
+ */
+export async function wakeControls(page: Page): Promise<void> {
+  try {
+    const size = page.viewportSize() ?? { width: 1280, height: 800 };
+    // Two moves: some clients only react to an actual change in position.
+    await page.mouse.move(size.width / 2, size.height / 2);
+    await page.mouse.move(size.width / 2, size.height - 40, { steps: 8 });
+    await page.waitForTimeout(600);
+  } catch {
+    // A closed page. The caller's own failure is the one worth reporting.
   }
 }
 
@@ -309,6 +338,9 @@ export async function startPresenting(
   groups: { presentButton: SelectorGroup; tabOption: SelectorGroup; stopSharing: SelectorGroup },
 ): Promise<boolean> {
   if (await isPresent(page, groups.stopSharing)) return true; // already sharing
+
+  // Same auto-hiding control bar as the chat button.
+  await wakeControls(page);
 
   if (!(await clickFirst(page, groups.presentButton, { timeoutMs: 6_000 }))) return false;
   await page.waitForTimeout(1_200);

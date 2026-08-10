@@ -183,11 +183,14 @@ export class CodeExecutorService {
       const exe = path.join(dir, process.platform === 'win32' ? 'main.exe' : 'main');
       await fs.writeFile(src, code);
 
-      const compile = await this.run('g++', ['-std=c++17', '-O2', '-o', exe, src], dir, '', 15_000);
+      // No -O2. Optimising a interview answer buys nothing measurable and
+      // costs a great deal: with <bits/stdc++.h> it is the difference between
+      // a compiler that needs a couple of hundred megabytes and one that needs
+      // most of a gigabyte. On a box that is also running a browser in a live
+      // meeting, that is what gets the compiler killed.
+      const compile = await this.run('g++', ['-std=c++17', '-o', exe, src], dir, '', 30_000);
       if (compile.exitCode !== 0) {
-        return {
-          compileError: compile.stderr.trim().slice(0, 4000) || 'Compilation failed (is g++ installed?)',
-        };
+        return { compileError: describeCompileFailure(compile, 'g++') };
       }
       return { command: exe, args: [] };
     }
@@ -195,13 +198,13 @@ export class CodeExecutorService {
     // Java requires the public class to be named Main.
     const src = path.join(dir, 'Main.java');
     await fs.writeFile(src, code);
-    const compile = await this.run('javac', ['-d', dir, src], dir, '', 20_000);
+    // -J-Xmx256m caps the JVM running javac. Left to itself it sizes its heap
+    // from total system memory and will happily reserve more than is free.
+    const compile = await this.run('javac', ['-J-Xmx256m', '-d', dir, src], dir, '', 30_000);
     if (compile.exitCode !== 0) {
-      return {
-        compileError: compile.stderr.trim().slice(0, 4000) || 'Compilation failed (is the JDK installed?)',
-      };
+      return { compileError: describeCompileFailure(compile, 'javac') };
     }
-    return { command: 'java', args: ['-cp', dir, 'Main'] };
+    return { command: 'java', args: ['-Xmx256m', '-cp', dir, 'Main'] };
   }
 
   private static run(
@@ -255,4 +258,38 @@ export class CodeExecutorService {
       child.stdin.end();
     });
   }
+}
+
+/**
+ * Explains a compiler that failed without saying anything.
+ *
+ * A compiler killed by the out-of-memory killer exits non-zero with empty
+ * stderr — indistinguishable, from here, from a compiler that is not installed.
+ * The old wording guessed "is g++ installed?", which sent one debugging session
+ * looking for a missing package that was there all along while the real cause
+ * was a browser holding most of the machine's memory.
+ *
+ * So: only blame a missing compiler when the process could not be started at
+ * all, and otherwise say what actually happened.
+ */
+function describeCompileFailure(
+  compile: { stderr: string; exitCode: number; timedOut: boolean },
+  compiler: string,
+): string {
+  const stderr = compile.stderr.trim();
+  if (stderr) return stderr.slice(0, 4000);
+
+  if (compile.timedOut) {
+    return `The ${compiler} compiler took too long and was stopped. Try a simpler solution, or fewer headers.`;
+  }
+
+  // spawn() failure surfaces as -1 here; anything else ran and was killed.
+  if (compile.exitCode === -1) {
+    return `The ${compiler} compiler is not available on this server.`;
+  }
+
+  return (
+    `The ${compiler} compiler was stopped before it finished (exit ${compile.exitCode}), ` +
+    'most likely because the server ran out of memory. This is a server problem, not a problem with your code.'
+  );
 }

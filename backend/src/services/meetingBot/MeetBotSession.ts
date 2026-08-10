@@ -568,12 +568,32 @@ export class MeetBotSession extends EventEmitter {
     const message = `Coding exercise — open this link to write your solution: ${this.codingUrl}`;
     this.emit('message', { speaker: 'SYSTEM', text: message, at: new Date().toISOString() });
 
-    const posted = this.browser && this.driver ? await this.driver.sendChat(this.browser.page, message) : false;
+    // Two attempts: the control bar the chat button lives on fades out, and the
+    // first click is often what brings it back rather than what opens the chat.
+    let posted = false;
+    for (let attempt = 0; attempt < 2 && !posted; attempt++) {
+      if (!this.browser || !this.driver) break;
+      posted = await this.driver.sendChat(this.browser.page, message).catch(() => false);
+      if (!posted) await new Promise((r) => setTimeout(r, 2_000));
+    }
 
     if (!posted) {
-      console.warn(
-        `[meet-bot ${this.interviewId}] could not post the coding link to the meeting chat — the candidate has it by email`,
+      console.warn(`[meet-bot ${this.interviewId}] could not post the coding link to the meeting chat`);
+
+      // The chat is the only place this link is delivered, so a failure there
+      // leaves the candidate with no way to reach the exercise. Reading it out
+      // is a poor substitute for a clickable link, but it is not nothing — and
+      // it tells them the round has started rather than leaving them waiting.
+      await this.say(
+        'I have tried to put a link in the meeting chat. If you cannot see it, please ask the recruiter for your coding exercise link.',
+        { expectsAnswer: false },
       );
+
+      this.emit('message', {
+        speaker: 'SYSTEM',
+        text: 'Could not post the coding link to the meeting chat — send it to the candidate manually.',
+        at: new Date().toISOString(),
+      });
     }
 
     await this.presentCandidateCode();

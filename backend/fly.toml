@@ -1,0 +1,85 @@
+# Fly.io configuration for the backend.
+#
+# Run `fly deploy` from this directory — Fly picks up the Dockerfile beside this
+# file. The frontend belongs on Vercel and needs nothing here.
+#
+# Change `app` to whatever name you created with `fly apps create`.
+
+app = 'ai-interviewer-api-priyanshu'
+primary_region = 'sin'
+
+# Must stay above every table header. A bare key written after `[[vm]]` becomes
+# part of that table and is silently ignored — which is exactly what happened
+# here, leaving the machine with no swap and the C++ compiler being OOM-killed
+# whenever a meeting was also running.
+swap_size_mb = 1024
+
+[build]
+
+[env]
+  NODE_ENV = 'production'
+  PORT = '5000'
+
+  # The server formats times in its own timezone, and a container defaults to
+  # UTC. Left unset, a 3:00 pm IST interview is emailed to the candidate as
+  # "9:30 AM", the dashboard says the bot is waiting until 9:35, and the
+  # spreadsheet exports disagree with both. Set this to wherever your
+  # candidates are.
+  TZ = 'Asia/Kolkata'
+
+  # No volume is mounted, so this is scratch space. The bot's Google session
+  # travels in the GOOGLE_BOT_COOKIES secret instead — see the deployment guide.
+  GOOGLE_BOT_PROFILE_PATH = '/tmp/meet-bot-profile'
+
+  MEET_BOT_ENABLED = 'true'
+  # The Playwright image ships Chromium, not Google Chrome. Naming it avoids a
+  # failed launch attempt before the fallback.
+  MEET_BOT_BROWSER_CHANNEL = 'chromium'
+  # False on purpose: the container runs the browser under Xvfb, so it is headed
+  # on a machine with no monitor. Meeting clients behave better that way.
+  MEET_BOT_HEADLESS = 'false'
+  MEET_BOT_DISPLAY_NAME = 'AI Interviewer'
+  MEET_BOT_JOIN_LEAD_MINUTES = '0'
+  MEET_BOT_CANDIDATE_WAIT_MINUTES = '5'
+  MEET_BOT_CANDIDATE_GRACE_MINUTES = '2'
+  # One meeting at a time on 2 GB. A call with video decoding can reach a
+  # gigabyte on its own; raise this only alongside `memory` below.
+  MEET_BOT_MAX_CONCURRENT = '1'
+  MEET_BOT_TTS = 'deepgram'
+
+  SCHEDULER_ENABLED = 'true'
+  SCHEDULER_INTERVAL_MS = '60000'
+
+[http_service]
+  internal_port = 5000
+  force_https = true
+
+  # The single most important line in this file.
+  #
+  # Fly stops machines that are not serving requests. A stopped machine has no
+  # scheduler, so no interview would ever join by itself — and nothing would
+  # look broken, because the API answers again the moment you open the
+  # dashboard. Keep one machine running always.
+  auto_stop_machines = 'off'
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ['app']
+
+[[http_service.checks]]
+  # /health runs a `SELECT 1`, so this is also a database query. Every 30s was
+  # 2,880 a day for no added confidence — the scheduler's own minute tick would
+  # surface a dead database just as fast.
+  interval = '60s'
+  timeout = '5s'
+  # Prisma connects and Playwright resolves its browser at boot; a shorter grace
+  # period restarts the machine before it has finished starting.
+  grace_period = '60s'
+  method = 'GET'
+  path = '/health'
+
+[[vm]]
+  cpu_kind = 'shared'
+  cpus = 2
+  # 256 MB — Fly's default — cannot start Chromium at all. This is the floor for
+  # one meeting; the interview crashes mid-call below it.
+  memory = '2gb'

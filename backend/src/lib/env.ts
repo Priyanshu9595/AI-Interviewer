@@ -139,6 +139,19 @@ const envSchema = z.object({
 
   /// Words per minute multiplier for SpeechSynthesis, when that driver is used.
   MEET_BOT_TTS_RATE: z.coerce.number().default(1),
+
+  /**
+   * Also send the coding-exercise link with the invitation email.
+   *
+   * Off by default: the interviewer posts it into the meeting chat when the
+   * round begins, and emailing it in advance hands the candidate the exercise
+   * before they have been asked for it. Turn on as a safety net for meetings
+   * whose chat the candidate cannot reach.
+   */
+  MEET_BOT_CODING_LINK_IN_EMAIL: z
+    .string()
+    .default('false')
+    .transform((v) => v === 'true'),
 });
 
 const parsed = envSchema.safeParse(process.env);

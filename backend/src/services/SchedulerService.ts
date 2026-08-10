@@ -27,15 +27,22 @@ const joinUrlFor = (sc: { accessToken: string; meetBotRun?: { meetLink: string }
 /**
  * Where a meeting-interview candidate writes their code.
  *
- * Sent with the invitation as well as posted in the meeting chat: a chat panel
- * the candidate has collapsed, or a client that hides it, is not a reliable way
- * to hand someone a link they need mid-interview.
+ * Deliberately **not** included in the invitation by default. Sending it ahead
+ * of time hands the candidate the exercise before the interviewer has asked for
+ * it, which is the wrong order — the round is meant to start when the
+ * interviewer says so. The bot posts the link into the meeting chat instead.
+ *
+ * Set MEET_BOT_CODING_LINK_IN_EMAIL=true to send it up front as well, as a
+ * safety net for meetings whose chat the candidate cannot see.
  */
 const codingUrlFor = (sc: {
   accessToken: string;
   meetBotRun?: unknown;
   interviewSession: { codingEnabled: boolean };
-}) => (sc.meetBotRun && sc.interviewSession.codingEnabled ? `${env.APP_URL}/interview/${sc.accessToken}/code` : undefined);
+}) =>
+  env.MEET_BOT_CODING_LINK_IN_EMAIL && sc.meetBotRun && sc.interviewSession.codingEnabled
+    ? `${env.APP_URL}/interview/${sc.accessToken}/code`
+    : undefined;
 
 export class SchedulerService {
   private static timer: NodeJS.Timeout | null = null;

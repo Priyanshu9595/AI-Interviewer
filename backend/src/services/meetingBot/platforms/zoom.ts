@@ -217,8 +217,15 @@ const SELECTORS = {
     description: 'chat panel button',
     strategies: [
       { kind: 'label', value: 'open the chat panel' },
+      { kind: 'label', value: 'chat' },
       { kind: 'role', role: 'button', name: /^chat$/i },
-      { kind: 'css', value: '.footer-button__chat-icon, [aria-label*="chat" i][role="button"]' },
+      { kind: 'role', role: 'button', name: /(open|show) chat/i },
+      { kind: 'css', value: '.footer-button__chat-icon' },
+      { kind: 'css', value: '[aria-label*="chat" i][role="button"], button[aria-label*="chat" i]' },
+      { kind: 'css', value: '[class*="footer-button"][class*="chat"]' },
+      // The controls bar hides itself; the button is present but not visible
+      // until the pointer moves, which `findFirst` cannot do on its own.
+      { kind: 'text', value: /^chat$/i },
     ],
   },
 
@@ -227,8 +234,11 @@ const SELECTORS = {
     strategies: [
       { kind: 'css', value: 'textarea.chat-box__chat-textarea' },
       { kind: 'css', value: 'textarea[aria-label*="Type message here" i]' },
+      { kind: 'css', value: 'textarea[placeholder*="Type message" i]' },
       { kind: 'css', value: 'div[contenteditable="true"][aria-label*="message" i]' },
+      { kind: 'css', value: 'div[contenteditable="true"][class*="chat"]' },
       { kind: 'role', role: 'textbox', name: /type message/i },
+      { kind: 'css', value: '.chat-rtf-box__editor, #chatTextarea' },
     ],
   },
 

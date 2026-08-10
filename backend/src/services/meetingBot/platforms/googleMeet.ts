@@ -39,12 +39,27 @@ const SELECTORS = {
     ],
   },
 
+  /**
+   * The guest name box, shown whenever Meet does not recognise the account.
+   *
+   * Filling this is not optional: "Ask to join" stays disabled while it is
+   * empty, so a bot that cannot find this field cannot enter the meeting at
+   * all, no matter what else works.
+   *
+   * Meet renders it with a floating Material label rather than a `placeholder`
+   * attribute, so matching on placeholder text — which is what this used to
+   * do — matches nothing. The last strategy is a deliberate catch-all: on the
+   * pre-join screen there is only one text box.
+   */
   nameInput: {
     description: 'guest name field',
     strategies: [
       { kind: 'role', role: 'textbox', name: /your name/i },
-      { kind: 'css', value: 'input[aria-label="Your name"]' },
-      { kind: 'css', value: 'input[placeholder="Your name"]' },
+      { kind: 'css', value: 'input[aria-label*="Your name" i]' },
+      { kind: 'css', value: 'input[placeholder*="Your name" i]' },
+      { kind: 'css', value: 'input[jsname="YPqjbf"]' },
+      { kind: 'css', value: 'input[type="text"][maxlength="60"]' },
+      { kind: 'css', value: 'input[type="text"]:not([type="search"])' },
     ],
   },
 
@@ -321,7 +336,7 @@ export const googleMeetDriver: PlatformDriver = {
     assertNotAborted(opts.signal);
     opts.onProgress('PRE_JOIN', 'Setting up camera and microphone');
 
-    await fillFirst(page, SELECTORS.nameInput, opts.displayName, { timeoutMs: 2_000 });
+    await enterGuestNameIfAsked(page, opts.displayName);
 
     // Neither of these is worth failing the interview over. A machine with no
     // webcam reports "Camera not found" and offers no readable toggle state,
@@ -498,6 +513,42 @@ async function waitForPreJoin(page: Page): Promise<boolean> {
 }
 
 /**
+ * Fills the guest name box, when Meet is showing one.
+ *
+ * A signed-in bot never sees this field and the function does nothing. A
+ * signed-out one cannot proceed without it — "Ask to join" is disabled while
+ * the box is empty — so unlike most of the pre-join steps this one is checked
+ * rather than attempted. Failing loudly here is much kinder than clicking a
+ * dead button for forty seconds and reporting that no join control was found.
+ */
+async function enterGuestNameIfAsked(page: Page, displayName: string): Promise<void> {
+  const field = await findFirst(page, SELECTORS.nameInput, { timeoutMs: 8_000 });
+  if (!field) return; // signed in — Meet already knows who this is
+
+  console.log('[meet-bot] Google Meet is asking for a guest name — the bot account is not signed in');
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await field.fill(displayName, { timeout: 5_000 }).catch(async () => {
+      // Some builds ignore a programmatic fill on this box and only respond to
+      // real key events.
+      await field.click({ timeout: 3_000 }).catch(() => {});
+      await field.type(displayName, { delay: 30 }).catch(() => {});
+    });
+
+    const written = await field.inputValue().catch(() => '');
+    if (written.trim().length > 0) return;
+
+    await page.waitForTimeout(700);
+  }
+
+  throw new BotError(
+    'PRE_JOIN_NOT_FOUND',
+    'Google Meet asked for a guest name and the field could not be filled, so the join button stays disabled',
+    'Google Meet is treating the interviewer as a guest and its name box could not be filled, so it cannot ask to join. Sign the bot in with `npm run bot:login google`, or refresh GOOGLE_BOT_COOKIES.',
+  );
+}
+
+/**
  * Presses Join and confirms it took.
  *
  * A single click is not enough in practice. Meet re-renders the pre-join screen
@@ -520,6 +571,24 @@ async function pressJoin(page: Page, opts: PlatformJoinOptions): Promise<void> {
       // waiting, or the screen has moved on. Let the wait below decide.
       if (attempt === 1) throw new BotError('JOIN_CONTROL_NOT_FOUND', `no join control on ${page.url()}`);
       break;
+    }
+
+    // A disabled join button is Meet saying a precondition is unmet — nearly
+    // always an empty guest name. Clicking it repeatedly achieves nothing, and
+    // reporting "no join control was found" forty seconds later describes the
+    // wrong problem entirely.
+    const usable = await button.isEnabled({ timeout: 2_000 }).catch(() => true);
+    if (!usable) {
+      const named = await findFirst(page, SELECTORS.nameInput, { timeoutMs: 0 });
+      const value = named ? await named.inputValue().catch(() => '') : '';
+
+      throw new BotError(
+        'JOIN_CONTROL_NOT_FOUND',
+        `the join button is disabled (guest name is "${value}")`,
+        value.trim()
+          ? 'Google Meet will not let the interviewer ask to join. The meeting may not accept guests.'
+          : 'Google Meet is refusing the join button because the interviewer has no name set. Sign the bot in with `npm run bot:login google`, or refresh GOOGLE_BOT_COOKIES.',
+      );
     }
 
     // Read the label before clicking: it says whether the organiser has to let

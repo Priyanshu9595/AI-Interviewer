@@ -125,7 +125,13 @@ export class MeetBotSession extends EventEmitter {
       });
 
       this.browser = await launchBrowser({
-        isolated: true,
+        // Copying the profile exists only so two interviews can run at once —
+        // Chromium takes an exclusive lock on a user-data directory. When only
+        // one runs at a time the copy is pure cost, and worse than that: recent
+        // Chrome binds cookie encryption to the profile's path, so a copied
+        // profile arrives signed out and Meet falls back to asking for a guest
+        // name. Use the real profile when nothing needs to share it.
+        isolated: env.MEET_BOT_MAX_CONCURRENT > 1,
         // Zoom and Teams join as named guests, so a missing profile is not a
         // reason to refuse the interview — only Meet genuinely needs one.
         requireSignedInProfile: driver.requiresSignIn,

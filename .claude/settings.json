@@ -59,7 +59,8 @@
       "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\).on\\('end',\\(\\)=>{const j=JSON.parse\\(d\\);console.log\\('  status        :',j.status\\);console.log\\('  database      :',j.database\\);console.log\\('  emailSender   :',j.emailSender, j.emailSender==='verified'?'✅':'⚠️'\\);console.log\\('  speechToText  :',j.speechToText\\);console.log\\('  storage       :',j.recordingStorage\\);console.log\\('  meetBot       :',JSON.stringify\\(j.meetBot\\)\\);console.log\\('  uptime        :',Math.round\\(j.uptimeSeconds\\),'sec'\\)}\\)\")",
       "Bash(timeout 500 npx tsx scripts/_coding-test.tmp.ts)",
       "Bash(grep -viE \"SECURITY WARNING|sslmode|libpq|prepare for this|explicitly use|next major version|postgresql.org|trace-warnings|^$\")",
-      "Bash(timeout 500 npx tsx scripts/_lang-test.tmp.ts)"
+      "Bash(timeout 500 npx tsx scripts/_lang-test.tmp.ts)",
+      "Bash(git push *)"
     ]
   }
 }

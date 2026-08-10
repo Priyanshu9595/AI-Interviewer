@@ -1,0 +1,44 @@
+# Deploys the backend to Fly.io on every push to main.
+#
+# The frontend needs nothing here — Vercel watches this repository itself.
+#
+# One-time setup:
+#   1. flyctl tokens create deploy -x 999999h
+#   2. Paste the whole token (including the leading "FlyV1 ") into
+#      GitHub → Settings → Secrets and variables → Actions → New repository
+#      secret, named FLY_API_TOKEN.
+
+name: Deploy backend to Fly.io
+
+on:
+  push:
+    branches:
+      - main
+    # Only when the backend actually changed. A frontend-only push would
+    # otherwise rebuild a 2 GB image and restart the machine — which, if it
+    # lands during an interview, kills a live meeting for no reason.
+    paths:
+      - 'backend/**'
+      - '.github/workflows/fly-deploy.yml'
+  # So a deploy can be re-run from the Actions tab without an empty commit.
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    # Two deploys at once would fight over the same machine.
+    concurrency: deploy-backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      # fly.toml and the Dockerfile both live in backend/, so the deploy is run
+      # from there rather than the repository root.
+      - name: Deploy
+        working-directory: backend
+        run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

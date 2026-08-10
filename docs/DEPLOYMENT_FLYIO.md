@@ -108,45 +108,75 @@ fall back to, so without it the interviewer cannot hear anyone.
 
 ## 4. Give the bot its Google session
 
-This is the step that would otherwise need a persistent disk, and it does not.
-
-A Chromium *profile* cannot move between operating systems — Windows encrypts
-its cookie store with DPAPI, tied to that machine. But the *cookies* can:
-exported through Playwright they are plain JSON, so a session created on your
-Windows laptop works fine on a Linux server.
-
-On your own machine, sign in once and export:
-
-```bash
-cd backend
-npm run bot:login            # a browser opens; sign in as the bot account
-npm run bot:export-cookies   # prints a long base64 string
-```
-
-That string is a **live Google session** — treat it like a password. Put it in a
-file rather than pasting it on a command line (it is around 15 KB, close to
-Windows' command-line limit):
-
-```bash
-# secrets.env — delete this file afterwards
-GOOGLE_BOT_COOKIES=<the base64 string, all on one line>
-```
-
-```bash
-fly secrets import < secrets.env
-rm secrets.env
-```
-
-The backend detects the secret and injects those cookies into every browser it
-launches, skipping the profile entirely.
-
 **Only Google Meet needs this.** Zoom and Teams join as named guests — skip this
 step if you are only using those.
 
-> Cookies are a snapshot, not a living session. If Google invalidates them —
-> a password change, a security review, months of age — interviews start failing
-> with `SIGN_IN_REQUIRED`. Re-run the two commands above and re-import. The same
-> is true of a profile on a disk, so this is not a downside of the approach.
+The bot signs in once, inside the container, onto a volume that survives
+restarts. It takes about five minutes and you never do it again.
+
+### Why not just copy cookies across
+
+An earlier version of this guide exported cookies from a laptop into a
+`GOOGLE_BOT_COOKIES` secret, to avoid paying for a volume. Do not do that. It
+works for a day or two and then fails in the worst possible way: Google revokes
+a rotating session that reappears somewhere new, the bot quietly becomes an
+anonymous guest, and Meet turns it away mid-interview with *"you can't join this
+video call"* — which reads like the host refused it.
+
+A profile is not a snapshot. The browser rotates its own cookies in place and
+keeps the session alive, which is the whole difference.
+
+### Create the volume
+
+```bash
+fly volumes create botprofile -a <your-app> -r <your-region> -n 1 -s 1
+```
+
+One gigabyte is far more than a profile needs, and it is the smallest Fly sells
+— about $0.15 a month. `fly.toml` already mounts it at `/data` and points
+`GOOGLE_BOT_PROFILE_PATH` there.
+
+A volume pins the app to one machine in one region. That was already required
+here: a second machine runs a second scheduler and every candidate is emailed
+twice. Keep `fly scale count 1`.
+
+### Sign in over VNC
+
+The profile has to be *made on Linux*: Windows encrypts its cookie store with
+DPAPI, bound to that machine's user account, so a profile built on a laptop
+arrives here unreadable. The image ships `x11vnc` for exactly this.
+
+You will need any VNC viewer — RealVNC Viewer and TightVNC are both fine.
+
+In one terminal, forward the port:
+
+```bash
+fly proxy 5900:5900 -a <your-app>
+```
+
+In a second, start the sign-in inside the machine:
+
+```bash
+fly ssh console -a <your-app>
+cd /app && npm run bot:login:vnc
+```
+
+Point the VNC viewer at `localhost:5900`. A browser is waiting there. Sign in as
+the bot's Google account, then return to the second terminal and press Enter to
+save the profile to `/data`.
+
+Nothing about the sign-in is automated, and nothing should be: you type the
+password into a real Google form. If Google asks for 2FA or a security check,
+complete it yourself in that window — the bot will never attempt one.
+
+### Check it took
+
+```bash
+fly ssh console -a <your-app> -C "ls /data/meet-bot-profile"
+```
+
+A `Default` directory means the profile is there. It will still be there after a
+restart, which is the point.
 
 ---
 
@@ -258,7 +288,7 @@ meeting on top of ~500 MB for the app.
 |---|---|
 | Machine keeps stopping | `auto_stop_machines` is not `'off'`. A stopped machine has no scheduler, so nothing auto-joins. |
 | Out of memory / browser crashes | The machine is below 2 GB, or `MEET_BOT_MAX_CONCURRENT` is above what the memory supports. |
-| `SIGN_IN_REQUIRED` | `GOOGLE_BOT_COOKIES` is missing or has expired. Re-run step 4. |
+| `SIGN_IN_REQUIRED` | The bot account is signed out, so Meet treated it as an uninvited stranger rather than a guest a host could admit. Re-run step 4. Check the logs for "asking for a guest name" — that line appears about a minute before the failure and says the same thing. |
 | Signed out on every reload; 401 on `/api/auth/refresh` | `NODE_ENV` is not `production`, so the refresh cookie is not `SameSite=None; Secure` and the browser drops it between domains. It is set in `fly.toml`; check a secret has not overridden it. |
 | Coding editor 404s | `APP_URL` points somewhere stale, or the Vercel build predates the page. Redeploy Vercel. |
 | Times are wrong in emails and on the dashboard | `TZ` is not set, so the container formats everything in UTC. It is set to `Asia/Kolkata` in `fly.toml` — change it to wherever your candidates are. |

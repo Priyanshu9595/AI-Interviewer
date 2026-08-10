@@ -60,7 +60,11 @@
       "Bash(timeout 500 npx tsx scripts/_coding-test.tmp.ts)",
       "Bash(grep -viE \"SECURITY WARNING|sslmode|libpq|prepare for this|explicitly use|next major version|postgresql.org|trace-warnings|^$\")",
       "Bash(timeout 500 npx tsx scripts/_lang-test.tmp.ts)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(curl -s -m 10 https://ai-interviewer-api-priyanshu.fly.dev/health)",
+      "Bash(node -e \"const j=require\\('/tmp/h.json'\\);console.log\\('  status      :',j.status\\);console.log\\('  database    :',j.database\\);console.log\\('  emailSender :',j.emailSender\\);console.log\\('  speech      :',j.speechToText\\);console.log\\('  meetBot     :',JSON.stringify\\(j.meetBot\\)\\);console.log\\('  uptime      :',Math.round\\(j.uptimeSeconds\\),'sec'\\)\")",
+      "Read(//d/tmp/**)",
+      "Bash(curl -s -m 20 https://ai-interviewer-api-priyanshu.fly.dev/health -o health.json)"
     ]
   }
 }

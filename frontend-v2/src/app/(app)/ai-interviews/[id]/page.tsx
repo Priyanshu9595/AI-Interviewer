@@ -333,6 +333,17 @@ function StatusPanel({
     ? Math.max(0, Math.floor(((interview.endedAt ? new Date(interview.endedAt).getTime() : now) - new Date(interview.joinedAt).getTime()) / 1000))
     : 0;
 
+  /**
+   * Getting a browser into a meeting takes the better part of a minute, and a
+   * panel that just says "Starting" for that long reads as broken — three
+   * interviews in a row were stopped by hand seconds before the bot got in.
+   * So say what is happening and show the clock running.
+   */
+  const joining = ['STARTING', 'OPENING_MEETING', 'PRE_JOIN'].includes(status);
+  const joiningSeconds = joining && interview.startedAt
+    ? Math.max(0, Math.floor((now - new Date(interview.startedAt).getTime()) / 1000))
+    : 0;
+
   return (
     <Card>
       <CardBody className="space-y-4">
@@ -349,6 +360,12 @@ function StatusPanel({
             <div>
               <p className="text-sm font-semibold text-foreground">AI Interviewer</p>
               <p className="text-xs text-muted-foreground">{detail ?? meta.label}</p>
+              {joining && (
+                <p className="mt-0.5 text-xs font-medium text-primary">
+                  Opening the meeting — this takes about a minute
+                  {joiningSeconds > 0 && ` · ${joiningSeconds}s`}
+                </p>
+              )}
             </div>
           </div>
 

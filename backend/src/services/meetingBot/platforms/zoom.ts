@@ -9,6 +9,7 @@ import {
   isPresent,
   postChatMessage,
   readNotice,
+  wakeControls,
   setToggle,
   startPresenting,
   stopPresenting as stopSharingScreen,
@@ -458,6 +459,11 @@ export const zoomDriver: PlatformDriver = {
 
   async admitWaiting(page) {
     let admitted = await admitAllWaiting(page, SELECTORS.admitButton);
+    if (admitted > 0) return admitted;
+
+    // The controls fade out when the pointer is still, and a bot's never moves.
+    await wakeControls(page);
+    admitted = await admitAllWaiting(page, SELECTORS.admitButton);
 
     // Zoom keeps its waiting room inside the participants panel, so the Admit
     // buttons only exist once that panel is open.

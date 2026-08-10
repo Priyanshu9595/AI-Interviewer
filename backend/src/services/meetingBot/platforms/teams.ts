@@ -9,6 +9,7 @@ import {
   isPresent,
   postChatMessage,
   readNotice,
+  wakeControls,
   setToggle,
   startPresenting,
   stopPresenting as stopSharingScreen,
@@ -441,6 +442,11 @@ export const teamsDriver: PlatformDriver = {
 
   async admitWaiting(page) {
     let admitted = await admitAllWaiting(page, SELECTORS.admitButton);
+    if (admitted > 0) return admitted;
+
+    // The controls fade out when the pointer is still, and a bot's never moves.
+    await wakeControls(page);
+    admitted = await admitAllWaiting(page, SELECTORS.admitButton);
 
     // Teams lists the lobby inside the People panel.
     if (admitted === 0 && (await isPresent(page, SELECTORS.admissionRequest))) {

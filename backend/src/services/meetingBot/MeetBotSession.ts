@@ -79,6 +79,8 @@ export class MeetBotSession extends EventEmitter {
   private interviewStarted = false;
   /** Set when no meeting audio reached the bot; shown alongside the status. */
   private audioWarning: string | null = null;
+  /** Reported once per interview; the monitor would otherwise repeat it. */
+  private reportedAdmissionProblem = false;
   private scheduledAt = new Date();
   private durationMinutes = 30;
   private candidateName = 'the candidate';
@@ -371,6 +373,25 @@ export class MeetBotSession extends EventEmitter {
     monitor.on('admitted', ({ count }: { count: number }) => {
       const text = `Let ${count === 1 ? 'the candidate' : `${count} participants`} in from the waiting room.`;
       this.emit('message', { speaker: 'SYSTEM', text, at: new Date().toISOString() });
+    });
+
+    monitor.on('admissionStuck', ({ seconds }: { seconds: number }) => {
+      if (this.reportedAdmissionProblem) return;
+      this.reportedAdmissionProblem = true;
+
+      const text =
+        `Somebody has been waiting to be let in for ${Math.round(seconds)}s and the interviewer cannot ` +
+        'admit them. Please admit them from the meeting yourself — the interview will carry on normally.';
+
+      console.error(`[meet-bot ${this.interviewId}] ${text}`);
+      this.emit('message', { speaker: 'SYSTEM', text, at: new Date().toISOString() });
+      void this.setStatus(this.status, 'Cannot admit the waiting candidate — admit them manually');
+
+      // The page as it stands is the only way to find out which control moved.
+      // Without it this is unfixable from the outside: the symptom is silence.
+      if (this.browser && !this.browser.page.isClosed()) {
+        void captureFailure(this.browser.page, this.interviewId, 'admit_failed').catch(() => {});
+      }
     });
 
     monitor.on('alone', () => {

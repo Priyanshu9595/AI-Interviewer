@@ -24,6 +24,12 @@ export interface MeetingMonitorEvents {
   ended: { reason: 'ENDED' | 'REMOVED' };
   /** Someone was let in from the waiting room. */
   admitted: { count: number };
+  /**
+   * Somebody has been visibly knocking for a while and every attempt to admit
+   * them has failed. Almost always a selector that no longer matches, and
+   * without this it is indistinguishable from nobody turning up.
+   */
+  admissionStuck: { seconds: number };
   snapshot: MeetingObservation;
 }
 
@@ -48,6 +54,10 @@ export class MeetingMonitor extends EventEmitter {
   private emptyStreak = 0;
   private endedStreak = 0;
   private static readonly STREAK_THRESHOLD = 3;
+
+  /** Consecutive polls with somebody waiting who could not be admitted. */
+  private waitingStreak = 0;
+  private reportedStuck = false;
 
   constructor(
     private readonly page: Page,
@@ -109,10 +119,31 @@ export class MeetingMonitor extends EventEmitter {
       // bot signs in as, which makes the bot the host. A host that never
       // presses Admit leaves the candidate in the waiting room for the entire
       // interview — so this runs on every tick, whether anyone is waiting or not.
-      const admitted = await this.driver.admitWaiting(this.page).catch(() => 0);
+      let admitted = 0;
+      try {
+        admitted = await this.driver.admitWaiting(this.page);
+      } catch (err) {
+        // Swallowing this was a mistake: it made a broken selector look exactly
+        // like an empty waiting room, and the interview was scored a no-show.
+        console.warn(`[meet-bot] admitWaiting threw: ${(err as Error).message}`);
+      }
+
       if (admitted > 0) {
         console.log(`[meet-bot] admitted ${admitted} waiting participant(s)`);
+        this.waitingStreak = 0;
+        this.reportedStuck = false;
         this.emit('admitted', { count: admitted });
+      } else if (snapshot.waitingRoomOccupied) {
+        this.waitingStreak++;
+
+        // Roughly fifteen seconds of somebody knocking with nothing happening.
+        // Long enough not to fire on the animation of a prompt appearing.
+        if (!this.reportedStuck && this.waitingStreak >= 5) {
+          this.reportedStuck = true;
+          this.emit('admissionStuck', { seconds: this.waitingStreak * (POLL_MS / 1000) });
+        }
+      } else {
+        this.waitingStreak = 0;
       }
 
       if (snapshot.participants > 1) {

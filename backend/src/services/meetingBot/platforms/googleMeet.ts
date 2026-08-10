@@ -9,6 +9,7 @@ import {
   isPresent,
   postChatMessage,
   readAriaMuted,
+  wakeControls,
   readNotice,
   setToggle,
   startPresenting,
@@ -132,8 +133,11 @@ const SELECTORS = {
     strategies: [
       { kind: 'role', role: 'button', name: /^admit all$/i },
       { kind: 'role', role: 'button', name: /^admit$/i },
+      { kind: 'role', role: 'button', name: /^let in$/i },
       { kind: 'css', value: 'button[aria-label*="Admit" i]:not([aria-label*="Deny" i])' },
+      { kind: 'css', value: 'button[aria-label*="Let in" i]' },
       { kind: 'css', value: '[role="button"][aria-label^="Admit" i]' },
+      { kind: 'text', value: /^(admit|admit all|let in)$/i },
     ],
   },
 
@@ -397,10 +401,21 @@ export const googleMeetDriver: PlatformDriver = {
     // opening in the common case. If only the People panel shows the request,
     // opening it puts an Admit button on screen for the next pass.
     let admitted = await admitAllWaiting(page, SELECTORS.admitButton);
+    if (admitted > 0) return admitted;
 
-    if (admitted === 0 && (await isPresent(page, SELECTORS.admissionRequest))) {
+    // Nothing clickable on screen. Meet fades its whole interface out when the
+    // pointer has not moved, and a bot's pointer never moves — so the admit
+    // prompt can be sitting there, rendered but invisible, which is the one
+    // state `findFirst` will not return.
+    await wakeControls(page);
+    admitted = await admitAllWaiting(page, SELECTORS.admitButton);
+    if (admitted > 0) return admitted;
+
+    // Still nothing. The notification may already have been dismissed, in which
+    // case the request only survives in the People panel.
+    if (await isPresent(page, SELECTORS.admissionRequest)) {
       await clickFirst(page, SELECTORS.peopleButton, { timeoutMs: 2_000 });
-      await page.waitForTimeout(1_200);
+      await page.waitForTimeout(1_500);
       admitted = await admitAllWaiting(page, SELECTORS.admitButton);
     }
 

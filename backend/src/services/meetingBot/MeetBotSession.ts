@@ -309,15 +309,31 @@ export class MeetBotSession extends EventEmitter {
   }
 
   private watchForCrash(): void {
-    this.browser?.context.on('close', () => {
+    const lost = (detail: string) => {
       if (this.finished) return;
-      void this.fail(new BotError('BROWSER_CRASHED', 'the browser closed while the interview was running'));
-    });
 
-    this.browser?.page.on('crash', () => {
-      if (this.finished) return;
-      void this.fail(new BotError('BROWSER_CRASHED', 'the Meet page crashed'));
-    });
+      // An interview that got several turns in is worth keeping. Telling the
+      // machine the candidate left marks it INCOMPLETE and preserves the
+      // transcript, rather than discarding a real conversation as a failure.
+      if (this.interviewStarted && this.machine) {
+        console.warn(`[meet-bot ${this.interviewId}] ${detail} — keeping the transcript as an incomplete interview`);
+        void this.machine.candidateLeft().catch(() => {});
+        return;
+      }
+
+      void this.fail(
+        new BotError(
+          'BROWSER_CRASHED',
+          detail,
+          env.MEET_BOT_HEADLESS
+            ? undefined
+            : 'The interviewer’s browser window closed. When MEET_BOT_HEADLESS=false the bot drives a visible window — closing it ends the interview.',
+        ),
+      );
+    };
+
+    this.browser?.context.on('close', () => lost('the browser closed while the interview was running'));
+    this.browser?.page.on('crash', () => lost('the meeting page crashed'));
   }
 
   private wireAudio(): void {
@@ -690,6 +706,7 @@ export class MeetBotSession extends EventEmitter {
    * it, so a failure is logged and the interview carries on.
    */
   private async presentCandidateCode(): Promise<void> {
+    if (!env.MEET_BOT_SHARE_CODE_SCREEN) return;
     if (!this.browser || !this.driver || !this.codingUrl) return;
 
     try {

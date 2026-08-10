@@ -152,6 +152,21 @@ const envSchema = z.object({
     .string()
     .default('false')
     .transform((v) => v === 'true'),
+
+  /**
+   * Share a live view of the candidate's editor onto the meeting screen.
+   *
+   * Off by default. Meet shares a tab's audio along with its picture, and the
+   * picker is steered by a command-line title match rather than clicked — so
+   * when the match misses, the bot ends up sharing the meeting back into
+   * itself and the call fills with feedback. The coding round does not need
+   * it: the candidate has the editor, the link goes into the chat, and the
+   * submission still reaches the interviewer.
+   */
+  MEET_BOT_SHARE_CODE_SCREEN: z
+    .string()
+    .default('false')
+    .transform((v) => v === 'true'),
 });
 
 const parsed = envSchema.safeParse(process.env);

@@ -68,7 +68,7 @@ model InterviewSession {
   durationMinutes Int
   status          SessionStatus @default(DRAFT)
 
-  meetingProvider String? // GOOGLE_MEET | ZOOM | MS_TEAMS | BUILT_IN
+  meetingProvider String? // GOOGLE_MEET | ZOOM | MS_TEAMS. Older rows may say BUILT_IN.
   meetingLink     String?
   externalEventId String?
 

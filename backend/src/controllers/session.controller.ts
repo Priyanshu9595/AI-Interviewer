@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { AuthRequest } from '../lib/auth';
 import { badRequest, notFound, param } from '../lib/http';
 import { prisma } from '../lib/prisma';
-import { availableProviders, createMeeting, MeetingProviderName } from '../lib/providers';
+import { availableProviders, createMeeting, MeetingCreationError, MeetingProviderName } from '../lib/providers';
 import { QuestionGenerationService } from '../services/QuestionGenerationService';
 import { RankingService } from '../services/RankingService';
 import { SchedulerService } from '../services/SchedulerService';
@@ -18,7 +18,9 @@ const createSchema = z.object({
   type: z.enum(['TECHNICAL', 'HR', 'MIXED']),
   scheduledAt: z.string().datetime({ offset: true }).or(z.string().min(1)),
   durationMinutes: z.number().int().min(10).max(180),
-  meetingProvider: z.enum(['GOOGLE_MEET', 'ZOOM', 'MS_TEAMS', 'BUILT_IN']).default('BUILT_IN'),
+  // No default and no built-in room: an interview is a real meeting somewhere
+  // the AI interviewer can join, so the caller has to say where.
+  meetingProvider: z.enum(['GOOGLE_MEET', 'ZOOM', 'MS_TEAMS']),
   personality: z.enum(['FRIENDLY', 'NEUTRAL', 'FORMAL', 'CHALLENGING']).default('FRIENDLY'),
   language: z.string().default('en-US'),
   codingEnabled: z.boolean().default(true),
@@ -50,12 +52,17 @@ export const createSession = async (req: AuthRequest, res: Response) => {
   const scheduledAt = new Date(data.scheduledAt);
   if (Number.isNaN(scheduledAt.getTime())) throw badRequest('scheduledAt is not a valid date');
 
+  // A provider that cannot produce a meeting is the recruiter's problem to fix,
+  // not a server fault — say so with a 400 they can act on.
   const meeting = await createMeeting(
     data.meetingProvider as MeetingProviderName,
     data.title,
     scheduledAt,
     data.durationMinutes,
-  );
+  ).catch((err) => {
+    if (err instanceof MeetingCreationError) throw badRequest(err.message);
+    throw err;
+  });
 
   const session = await prisma.interviewSession.create({
     data: {

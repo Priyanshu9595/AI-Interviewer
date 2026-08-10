@@ -95,8 +95,10 @@ async function main() {
         ...s,
         userId: user.id,
         status: s.scheduledAt < new Date() ? 'COMPLETED' : 'SCHEDULED',
-        meetingProvider: 'BUILT_IN',
-        meetingLink: `${process.env.APP_URL ?? 'http://localhost:3000'}/interview`,
+        meetingProvider: 'GOOGLE_MEET',
+        // Sample data only. The bot is never pointed at these; a real interview
+        // carries a link the recruiter pasted or a provider created.
+        meetingLink: `https://meet.google.com/sample-demo-${i + 1}`,
         language: 'en-US',
         codingEnabled: s.type !== 'HR',
       },

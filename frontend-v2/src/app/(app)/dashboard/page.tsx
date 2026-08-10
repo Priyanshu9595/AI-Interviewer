@@ -149,10 +149,10 @@ export default function DashboardPage() {
         title="Dashboard"
         description="Interview activity across all of your sessions."
         actions={
-          <Link href="/sessions/new">
+          <Link href="/ai-interviews/new">
             <Button>
               <Plus className="h-4 w-4" />
-              New session
+              New interview
             </Button>
           </Link>
         }
@@ -229,12 +229,12 @@ export default function DashboardPage() {
             <EmptyState
               icon={CalendarClock}
               title="Nothing scheduled"
-              description="Create a session and add candidates to get started."
+              description="Schedule an interview with a Google Meet, Zoom or Teams link to get started."
               action={
-                <Link href="/sessions/new">
+                <Link href="/ai-interviews/new">
                   <Button size="sm">
                     <Plus className="h-4 w-4" />
-                    New session
+                    New interview
                   </Button>
                 </Link>
               }

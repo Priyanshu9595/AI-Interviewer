@@ -101,8 +101,8 @@ export default function CandidatesPage() {
                   Clear search
                 </Button>
               ) : (
-                <Link href="/sessions/new">
-                  <Button size="sm">Create a session</Button>
+                <Link href="/ai-interviews/new">
+                  <Button size="sm">Schedule an interview</Button>
                 </Link>
               )
             }

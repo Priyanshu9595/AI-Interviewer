@@ -92,8 +92,8 @@ export default function AnalyticsPage() {
             title="Nothing to analyse yet"
             description="Once candidates have completed interviews, hiring trends and skill breakdowns appear here."
             action={
-              <Link href="/sessions/new" className="text-sm font-medium text-primary hover:underline">
-                Create a session
+              <Link href="/ai-interviews/new" className="text-sm font-medium text-primary hover:underline">
+                Schedule an interview
               </Link>
             }
           />

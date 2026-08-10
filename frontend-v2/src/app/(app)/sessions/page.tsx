@@ -116,12 +116,12 @@ export default function SessionsPage() {
     <>
       <PageHeader
         title="Interview sessions"
-        description={total > 0 ? `${total} session${total === 1 ? '' : 's'}` : 'Create a session to start interviewing.'}
+        description={total > 0 ? `${total} session${total === 1 ? '' : 's'}` : 'Schedule an interview to get started.'}
         actions={
-          <Link href="/sessions/new">
+          <Link href="/ai-interviews/new">
             <Button>
               <Plus className="h-4 w-4" />
-              New session
+              New interview
             </Button>
           </Link>
         }
@@ -206,10 +206,10 @@ export default function SessionsPage() {
                   Clear filters
                 </Button>
               ) : (
-                <Link href="/sessions/new">
+                <Link href="/ai-interviews/new">
                   <Button size="sm">
                     <Plus className="h-4 w-4" />
-                    New session
+                    New interview
                   </Button>
                 </Link>
               )

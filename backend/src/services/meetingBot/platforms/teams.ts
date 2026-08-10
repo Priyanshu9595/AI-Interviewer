@@ -2,6 +2,7 @@ import type { Locator, Page } from 'playwright';
 import { BotError, type ParsedMeetingLink } from '../errors';
 import {
   admitAllWaiting,
+  CAMERA_TRY,
   clickFirst,
   clickLocator,
   fillFirst,
@@ -371,7 +372,7 @@ export const teamsDriver: PlatformDriver = {
     // offers no readable camera state, and a microphone that reads wrong here
     // is set again below once the in-call controls exist. What actually matters
     // is verified in-call by the audio bridge.
-    if (!(await setToggle(page, SELECTORS.cameraToggle, true, readTeamsMuted))) {
+    if (!(await setToggle(page, SELECTORS.cameraToggle, true, readTeamsMuted, CAMERA_TRY))) {
       console.warn('[meet-bot] could not confirm the Teams camera is off — continuing');
     }
     if (!(await setToggle(page, SELECTORS.microphoneToggle, false, readTeamsMuted))) {

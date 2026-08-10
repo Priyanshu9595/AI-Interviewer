@@ -2,6 +2,7 @@ import type { Page } from 'playwright';
 import { BotError, type ParsedMeetingLink } from '../errors';
 import {
   admitAllWaiting,
+  CAMERA_TRY,
   clickFirst,
   clickLocator,
   fillFirst,
@@ -384,7 +385,7 @@ export const zoomDriver: PlatformDriver = {
 
     // Zoom's pre-join preview only offers a camera toggle; the microphone is
     // chosen after joining, at the "join computer audio" prompt below.
-    await setToggle(page, SELECTORS.cameraToggle, true, readZoomMuted);
+    await setToggle(page, SELECTORS.cameraToggle, true, readZoomMuted, CAMERA_TRY);
 
     assertNotAborted(opts.signal);
 

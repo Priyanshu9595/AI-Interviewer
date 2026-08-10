@@ -193,20 +193,47 @@ export async function readNotice(page: Page, group: SelectorGroup): Promise<stri
  * caller to decide whether that is fatal. A camera that might be on is
  * embarrassing; a microphone that might be off ends the interview.
  */
+export interface ToggleOptions {
+  /** How many times to look for the control. Defaults to 3. */
+  attempts?: number;
+  /** Budget for the first search. Later ones always get 3s. Defaults to 10s. */
+  timeoutMs?: number;
+}
+
+/**
+ * The budget every platform gives the camera toggle.
+ *
+ * Whether the bot's camera is on or off changes nothing: the server has no
+ * webcam, so there is no picture to send either way. It is worth one quick
+ * press for tidiness and not one second more.
+ *
+ * The default budget is ten seconds, and a container with no camera control to
+ * find spends all ten of them before giving up — measured, not guessed. That
+ * was ten seconds of the pre-join screen, which since the bot started joining
+ * at the scheduled minute itself is ten seconds of being late.
+ */
+export const CAMERA_TRY: ToggleOptions = { attempts: 1, timeoutMs: 2_500 };
+
 export async function setToggle(
   page: Page,
   group: SelectorGroup,
   desiredMuted: boolean,
   readState: (locator: Locator) => Promise<boolean | null>,
+  opts: ToggleOptions = {},
 ): Promise<boolean> {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const toggle = await findFirst(page, group, { timeoutMs: attempt === 0 ? 10_000 : 3_000 });
+  const attempts = opts.attempts ?? 3;
+  const firstTimeoutMs = opts.timeoutMs ?? 10_000;
+
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const toggle = await findFirst(page, group, {
+      timeoutMs: attempt === 0 ? firstTimeoutMs : 3_000,
+    });
     if (!toggle) return false;
 
     const current = await readState(toggle);
 
     // Unknown state, with attempts left: the control may still be initialising.
-    if (current === null && attempt < 2) {
+    if (current === null && attempt < attempts - 1) {
       await page.waitForTimeout(700);
       continue;
     }

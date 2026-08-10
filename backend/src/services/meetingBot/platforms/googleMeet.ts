@@ -2,6 +2,7 @@ import type { Page } from 'playwright';
 import { BotError, type ParsedMeetingLink } from '../errors';
 import {
   admitAllWaiting,
+  CAMERA_TRY,
   clickFirst,
   clickLocator,
   fillFirst,
@@ -352,7 +353,11 @@ export const googleMeetDriver: PlatformDriver = {
     // and a microphone that reads wrong here can be corrected once inside —
     // whereas refusing to join guarantees there is no interview at all. What
     // actually matters is verified in-call by the audio bridge.
-    if (!(await setToggle(page, SELECTORS.cameraToggle, true, readAriaMuted))) {
+    //
+    // The camera gets a short budget: on a machine with no webcam the default
+    // one spends a measured ten seconds finding nothing, and the bot now joins
+    // at the scheduled minute itself. See CAMERA_TRY.
+    if (!(await setToggle(page, SELECTORS.cameraToggle, true, readAriaMuted, CAMERA_TRY))) {
       console.warn('[meet-bot] could not confirm the Google Meet camera is off — continuing');
     }
     if (!(await setToggle(page, SELECTORS.microphoneToggle, false, readAriaMuted))) {

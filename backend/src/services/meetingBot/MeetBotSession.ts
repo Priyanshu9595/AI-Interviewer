@@ -213,6 +213,10 @@ export class MeetBotSession extends EventEmitter {
       try {
         return await joinMeeting(this.browser!.page, {
           link,
+          // Started early so the slow part — launching Chromium, loading the
+          // meeting page, setting up audio — is done before the clock says go.
+          // A manual "start now" has no scheduled moment to wait for.
+          notBefore: this.opts.manualStart ? undefined : this.scheduledAt,
           signal: this.abort.signal,
           onProgress: ({ stage, detail }) => {
             void this.setStatus(stage as MeetBotStatus, detail);

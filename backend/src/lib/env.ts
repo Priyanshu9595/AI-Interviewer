@@ -106,6 +106,21 @@ const envSchema = z.object({
    */
   MEET_BOT_JOIN_LEAD_MINUTES: z.coerce.number().default(0),
 
+  /**
+   * How long before a run's joinAt the browser is started.
+   *
+   * Measured, not guessed: from the launcher firing to the bot actually being
+   * in the meeting took between 9 and 62 seconds across real runs, nearly all
+   * of it Chromium starting and the meeting page loading. With a lead of zero
+   * that delay lands *after* the scheduled time, so a 3:00 interview had the
+   * interviewer appear at 3:01.
+   *
+   * None of that work is visible from inside the meeting — it all happens on
+   * the pre-join screen — so it is done early and the join press itself is held
+   * until the scheduled second. The bot still appears at 3:00 exactly.
+   */
+  MEET_BOT_WARMUP_SECONDS: z.coerce.number().default(75),
+
   /// How long to sit in the lobby waiting for the organiser to admit the bot.
   MEET_BOT_ADMISSION_TIMEOUT_MS: z.coerce.number().default(10 * 60_000),
 

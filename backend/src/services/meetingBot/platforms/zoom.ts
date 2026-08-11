@@ -16,7 +16,7 @@ import {
   stopPresenting as stopSharingScreen,
   type SelectorGroup,
 } from '../selectors';
-import { assertNotAborted, type MeetingObservation, type PlatformDriver, type PlatformJoinOptions } from './types';
+import { assertNotAborted, waitUntilDue, type MeetingObservation, type PlatformDriver, type PlatformJoinOptions } from './types';
 
 /**
  * Zoom, through the browser client.
@@ -386,6 +386,10 @@ export const zoomDriver: PlatformDriver = {
     // Zoom's pre-join preview only offers a camera toggle; the microphone is
     // chosen after joining, at the "join computer audio" prompt below.
     await setToggle(page, SELECTORS.cameraToggle, true, readZoomMuted, CAMERA_TRY);
+
+    // Held here rather than earlier: the setup above is invisible from inside
+    // the meeting, and pressing join is what is not.
+    await waitUntilDue(opts);
 
     assertNotAborted(opts.signal);
 

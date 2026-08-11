@@ -23,6 +23,16 @@ export interface PlatformJoinOptions {
   displayName: string;
   /** How long to sit in the lobby before giving up. */
   admissionTimeoutMs: number;
+  /**
+   * The earliest the join control may be pressed.
+   *
+   * Everything before that press is invisible from inside the meeting: the
+   * browser starts, the page loads, the microphone is set up, all on the
+   * pre-join screen where nobody can see the bot. Only the press puts it in
+   * the room. Holding it lets the slow part happen early while the bot still
+   * appears at the time on the invitation.
+   */
+  notBefore?: Date;
   signal?: AbortSignal;
   onProgress: (stage: JoinStage, detail: string) => void;
 }
@@ -126,4 +136,26 @@ export interface PlatformDriver {
  */
 export function assertNotAborted(signal?: AbortSignal): void {
   if (signal?.aborted) throw new BotError('STOPPED_BY_RECRUITER');
+}
+
+/**
+ * Holds on the pre-join screen until the interview is actually due.
+ *
+ * Called by every driver immediately before it presses join. Sleeps in short
+ * steps so a recruiter who stops the interview mid-wait is not left waiting
+ * out the rest of it.
+ */
+export async function waitUntilDue(opts: PlatformJoinOptions): Promise<void> {
+  if (!opts.notBefore) return;
+
+  let remaining = opts.notBefore.getTime() - Date.now();
+  if (remaining <= 0) return;
+
+  opts.onProgress('PRE_JOIN', `Ready — joining at ${opts.notBefore.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`);
+
+  while (remaining > 0) {
+    assertNotAborted(opts.signal);
+    await new Promise((resolve) => setTimeout(resolve, Math.min(1_000, remaining)));
+    remaining = opts.notBefore.getTime() - Date.now();
+  }
 }

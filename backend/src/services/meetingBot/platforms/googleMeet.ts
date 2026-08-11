@@ -17,7 +17,7 @@ import {
   stopPresenting as stopSharingScreen,
   type SelectorGroup,
 } from '../selectors';
-import { assertNotAborted, type MeetingObservation, type PlatformDriver, type PlatformJoinOptions } from './types';
+import { assertNotAborted, waitUntilDue, type MeetingObservation, type PlatformDriver, type PlatformJoinOptions } from './types';
 
 /**
  * Google Meet.
@@ -363,6 +363,11 @@ export const googleMeetDriver: PlatformDriver = {
     if (!(await setToggle(page, SELECTORS.microphoneToggle, false, readAriaMuted))) {
       console.warn('[meet-bot] could not confirm the Google Meet microphone is on — will retry in the call');
     }
+
+    // Everything above happens on the pre-join screen, where the meeting
+    // cannot see the bot. This is the line that puts it in the room, so it is
+    // the one held back to the scheduled minute.
+    await waitUntilDue(opts);
 
     assertNotAborted(opts.signal);
     await pressJoin(page, opts);

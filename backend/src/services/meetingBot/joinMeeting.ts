@@ -29,6 +29,8 @@ export interface JoinOptions {
   onProgress?: (progress: JoinProgress) => void;
   /** Overrides the configured lobby patience, for tests and manual runs. */
   admissionTimeoutMs?: number;
+  /** Hold the join press until this moment; see PlatformJoinOptions.notBefore. */
+  notBefore?: Date;
   signal?: AbortSignal;
 }
 
@@ -50,6 +52,7 @@ export async function joinMeeting(page: Page, opts: JoinOptions): Promise<JoinRe
     link: opts.link,
     displayName: opts.displayName ?? env.MEET_BOT_DISPLAY_NAME,
     admissionTimeoutMs: opts.admissionTimeoutMs ?? env.MEET_BOT_ADMISSION_TIMEOUT_MS,
+    notBefore: opts.notBefore,
     signal: opts.signal,
     onProgress: (stage, detail) => {
       if (stage === 'WAITING_FOR_ADMISSION') requiredAdmission = true;

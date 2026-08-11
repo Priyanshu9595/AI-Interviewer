@@ -253,8 +253,14 @@ export class MeetBotManager {
 
     const now = new Date();
 
+    // Started before joinAt on purpose. Everything up to the join press happens
+    // on the pre-join screen, where the meeting cannot see the bot, and the
+    // driver holds that press until the scheduled moment — so this buys back
+    // the browser's startup time without the bot turning up early.
+    const readyBy = new Date(now.getTime() + env.MEET_BOT_WARMUP_SECONDS * 1_000);
+
     const due = await prisma.meetBotRun.findMany({
-      where: { status: 'SCHEDULED', joinAt: { lte: now } },
+      where: { status: 'SCHEDULED', joinAt: { lte: readyBy } },
       include: {
         sessionCandidate: {
           select: { status: true, interviewSession: { select: { scheduledAt: true, status: true } } },
@@ -337,7 +343,8 @@ export class MeetBotManager {
 
     if (!next) return;
 
-    const msUntil = next.joinAt.getTime() - Date.now();
+    // Fires early by the warm-up, matching what launchDue is willing to take.
+    const msUntil = next.joinAt.getTime() - env.MEET_BOT_WARMUP_SECONDS * 1_000 - Date.now();
     // Further out than the next tick? The scheduler will reach it first and
     // re-arm this with a shorter, more useful delay.
     if (msUntil > env.SCHEDULER_INTERVAL_MS) return;

@@ -16,7 +16,7 @@ import {
   stopPresenting as stopSharingScreen,
   type SelectorGroup,
 } from '../selectors';
-import { assertNotAborted, type MeetingObservation, type PlatformDriver, type PlatformJoinOptions } from './types';
+import { assertNotAborted, waitUntilDue, type MeetingObservation, type PlatformDriver, type PlatformJoinOptions } from './types';
 
 /**
  * Microsoft Teams, through the web client.
@@ -378,6 +378,10 @@ export const teamsDriver: PlatformDriver = {
     if (!(await setToggle(page, SELECTORS.microphoneToggle, false, readTeamsMuted))) {
       console.warn('[meet-bot] could not confirm the Teams microphone is on — will retry in the call');
     }
+
+    // Held here rather than earlier: the setup above is invisible from inside
+    // the meeting, and pressing join is what is not.
+    await waitUntilDue(opts);
 
     assertNotAborted(opts.signal);
 

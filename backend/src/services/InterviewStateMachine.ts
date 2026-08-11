@@ -98,8 +98,6 @@ export class InterviewStateMachine extends EventEmitter {
   private probesOnCurrent = 0;
   /** Times we have invited a candidate who said "yes" to actually ask. */
   private closingPrompts = 0;
-  /** Closing questions answered, capped so the interview cannot run forever. */
-  private closingAnswers = 0;
   /** Times we have asked a joined-but-silent candidate to say hello. */
   private greetingPrompts = 0;
   /** Turns of hello-how-are-you spoken so far, capped so it stays brief. */
@@ -388,19 +386,20 @@ export class InterviewStateMachine extends EventEmitter {
     }
 
     // A real question. Answering it is the point of having asked.
-    if (this.closingAnswers >= 3 || !this.interviewer) {
+    if (!this.interviewer) {
       await this.finish('completed');
       return;
     }
-    this.closingAnswers++;
 
     // The caller has already written this turn to the transcript.
     const reply = await this.interviewer.answerClosingQuestion(said);
 
-    await this.say(`${reply} Is there anything else you would like to ask?`, {
-      round: 'CLOSING',
-      expectsAnswer: true,
-    });
+    // Answered, and that is the end of it. Offering "anything else?" kept the
+    // interview open on a candidate who had already finished: the usual reply
+    // is silence, which the silence timer then treated as an unanswered
+    // question and asked whether they would like it rephrased.
+    await this.say(reply, { round: 'CLOSING', expectsAnswer: false });
+    await this.finish('completed');
   }
 
   /** The candidate asked the interviewer a question mid-round. */
@@ -427,6 +426,14 @@ export class InterviewStateMachine extends EventEmitter {
   /** The candidate went quiet for a long time without answering. */
   async silenceDetected() {
     if (this.busy || this.state === 'COMPLETED' || this.state === 'INCOMPLETE' || this.state === 'ABSENT') return;
+
+    // Silence after "any questions for me?" is an answer, and the answer is
+    // no. Offering to rephrase treats it as a question they failed to follow,
+    // which is both wrong and a strange note to end an interview on.
+    if (this.state === 'CLOSING') {
+      await this.finish('completed');
+      return;
+    }
 
     await InsightService.record(this.sessionCandidateId, [
       { type: 'LONG_PAUSE', message: 'Went silent without answering.', severity: 0.6 },
@@ -684,8 +691,11 @@ export class InterviewStateMachine extends EventEmitter {
       return;
     }
 
+    const isFollowUp =
+      turn.decision === 'PROBE' || turn.decision === 'REPEAT' || turn.decision === 'CLARIFY';
+
     // Cap follow-ups so a single question cannot consume the whole interview.
-    if ((turn.decision === 'PROBE' || turn.decision === 'REPEAT' || turn.decision === 'CLARIFY') && this.probesOnCurrent < 2) {
+    if (isFollowUp && this.probesOnCurrent < 2) {
       this.probesOnCurrent++;
       await this.say(turn.spokenResponse, {
         round: String(question.category),
@@ -695,7 +705,17 @@ export class InterviewStateMachine extends EventEmitter {
       return;
     }
 
-    await this.advance(turn.spokenResponse);
+    // Out of follow-ups, so we move on — but `spokenResponse` here is still a
+    // follow-up *question*, and `advance` puts the next question straight after
+    // whatever it is given. Passing it through asks two things in one breath:
+    //
+    //   "...Can you tell me something you are proud of? What is the difference
+    //    between a controlled and an uncontrolled component in React?"
+    //
+    // The candidate answers neither. Only a NEXT response is an acknowledgement
+    // — and only that one has been trimmed to a few words — so anything else is
+    // dropped for a plain one.
+    await this.advance(isFollowUp ? 'Thank you.' : turn.spokenResponse);
   }
 
   /** Moves to the next question, optionally prefixed with an acknowledgement. */

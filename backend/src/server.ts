@@ -3,6 +3,7 @@ import cors from 'cors';
 import express from 'express';
 import http from 'http';
 import { Server } from 'socket.io';
+import { FAST_MODEL, provider, SMART_MODEL } from './lib/ai';
 import { env } from './lib/env';
 import { errorHandler, notFoundHandler } from './lib/http';
 import { emailSenderStatus, verifyEmailSender } from './lib/email/EmailService';
@@ -39,6 +40,10 @@ app.get('/health', async (_req, res) => {
     emailSender: emailSenderStatus(),
     recordingStorage: getCloudinaryStatus(),
     speechToText: getSpeechStatus(),
+    // Which service is answering the model calls, and as what. Reported because
+    // "is production on the provider I configured?" is otherwise a question
+    // only a live interview can answer.
+    llm: { provider: provider.name, fast: FAST_MODEL, smart: SMART_MODEL },
     activeInterviews: activeInterviewCount(),
     meetBot: {
       enabled: env.MEET_BOT_ENABLED,

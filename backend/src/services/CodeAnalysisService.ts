@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { complete, completeJson } from '../lib/ai';
+import { complete, completeJson, FAST_MODEL, SMART_MODEL } from '../lib/ai';
 import { env } from '../lib/env';
 import type { ExecutionResult } from './CodeExecutorService';
 
@@ -54,7 +54,7 @@ export class CodeAnalysisService {
   static async hint(problem: string, code: string, language: string): Promise<string> {
     try {
       return await complete({
-        model: env.GROQ_FAST_MODEL,
+        model: FAST_MODEL,
         temperature: 0.5,
         maxTokens: 150,
         messages: [
@@ -94,7 +94,7 @@ export class CodeAnalysisService {
     try {
       return await completeJson({
         schema: reviewSchema,
-        model: env.GROQ_SMART_MODEL,
+        model: SMART_MODEL,
         temperature: 0.2,
         maxTokens: 900,
         messages: [

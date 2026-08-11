@@ -1,10 +1,107 @@
-import Groq from 'groq-sdk';
 import { z } from 'zod';
 import { env } from './env';
 
-const client = new Groq({ apiKey: env.GROQ_API_KEY });
-
 export type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string };
+
+/**
+ * Which service the model calls go to.
+ *
+ * Groq and Mistral both speak the OpenAI chat-completions shape, so one small
+ * fetch serves both and the only differences are the URL, the key and the
+ * model names. The vendor SDK was dropped for exactly that reason: it hard
+ * codes `/openai/v1/chat/completions`, which is Groq's path and nobody else's,
+ * so pointing it at another host quietly produces 404s.
+ */
+interface Provider {
+  readonly name: 'groq' | 'mistral';
+  readonly url: string;
+  readonly apiKey: string;
+  /** Used for conversational turns, where the candidate is waiting. */
+  readonly fastModel: string;
+  /** Used for question generation and scoring, where quality outweighs speed. */
+  readonly smartModel: string;
+}
+
+function resolveProvider(): Provider {
+  const groq: Provider = {
+    name: 'groq',
+    url: 'https://api.groq.com/openai/v1/chat/completions',
+    apiKey: env.GROQ_API_KEY ?? '',
+    fastModel: env.GROQ_FAST_MODEL,
+    smartModel: env.GROQ_SMART_MODEL,
+  };
+
+  const mistral: Provider = {
+    name: 'mistral',
+    url: 'https://api.mistral.ai/v1/chat/completions',
+    apiKey: env.MISTRAL_API_KEY ?? '',
+    fastModel: env.MISTRAL_FAST_MODEL,
+    smartModel: env.MISTRAL_SMART_MODEL,
+  };
+
+  if (env.LLM_PROVIDER === 'groq') return groq;
+  if (env.LLM_PROVIDER === 'mistral') return mistral;
+
+  // Whichever key is present. Mistral first, so adding its key is all it takes
+  // to switch — with both set, LLM_PROVIDER decides.
+  return mistral.apiKey ? mistral : groq;
+}
+
+export const provider = resolveProvider();
+
+/** The two model names, whichever provider is in use. */
+export const FAST_MODEL = provider.fastModel;
+export const SMART_MODEL = provider.smartModel;
+
+interface ChatResponse {
+  choices?: Array<{ message?: { content?: string } }>;
+}
+
+/** One chat-completions call. Shared by both entry points below. */
+async function chat(body: Record<string, unknown>): Promise<string> {
+  if (!provider.apiKey) {
+    throw new Error(`${provider.name.toUpperCase()}_API_KEY is not set, so the interviewer has no language model.`);
+  }
+
+  const res = await fetch(provider.url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${provider.apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(90_000),
+  });
+
+  if (!res.ok) {
+    const detail = (await res.text().catch(() => '')).slice(0, 400);
+    const err = new Error(`${provider.name} returned ${res.status}: ${detail}`);
+    // Carried so isRateLimit can see it without parsing the message.
+    Object.assign(err, { status: res.status });
+    throw err;
+  }
+
+  const payload = (await res.json()) as ChatResponse;
+  return unquote(payload.choices?.[0]?.message?.content?.trim() ?? '');
+}
+
+/**
+ * Drops quotation marks wrapped around a whole reply.
+ *
+ * Asked for a line to say, these models often answer `"Excellent answer, thank
+ * you."` — quotes included. They are punctuation about the sentence rather
+ * than part of it, and they end up in the transcript and in the mouth of the
+ * interviewer. Only stripped when they enclose the entire string, so a reply
+ * that genuinely quotes something keeps its quotes.
+ */
+function unquote(text: string): string {
+  const wrapped = /^(["'“”])([\s\S]+)(["'“”])$/.exec(text);
+  if (!wrapped) return text;
+
+  const inner = wrapped[2]!;
+  // A closing quote in the middle means the outer pair is not a wrapper.
+  return /["'“”]/.test(inner) ? text : inner.trim();
+}
 
 /** Thrown when the provider refuses on quota rather than on the request itself. */
 export class RateLimitError extends Error {
@@ -100,20 +197,14 @@ interface CompleteOptions {
 
 export async function complete({
   messages,
-  model = env.GROQ_FAST_MODEL,
+  model = FAST_MODEL,
   temperature = 0.6,
   maxTokens = 1024,
 }: CompleteOptions): Promise<string> {
   assertNotCoolingDown();
 
   try {
-    const res = await client.chat.completions.create({
-      model,
-      messages,
-      temperature,
-      max_tokens: maxTokens,
-    });
-    return res.choices[0]?.message?.content?.trim() ?? '';
+    return await chat({ model, messages, temperature, max_tokens: maxTokens });
   } catch (err) {
     if (isRateLimit(err)) {
       const rateLimit = new RateLimitError(err as Error);
@@ -138,7 +229,7 @@ interface JsonOptions<T extends z.ZodTypeAny> extends CompleteOptions {
 export async function completeJson<T extends z.ZodTypeAny>({
   schema,
   messages,
-  model = env.GROQ_FAST_MODEL,
+  model = FAST_MODEL,
   temperature = 0.4,
   maxTokens = 4096,
   retries = 2,
@@ -151,14 +242,13 @@ export async function completeJson<T extends z.ZodTypeAny>({
   for (let attempt = 0; attempt <= retries; attempt++) {
     let raw = '';
     try {
-      const res = await client.chat.completions.create({
+      raw = await chat({
         model,
         messages: convo,
         temperature,
         max_tokens: maxTokens,
         response_format: { type: 'json_object' },
       });
-      raw = res.choices[0]?.message?.content ?? '';
       return schema.parse(JSON.parse(extractJson(raw)));
     } catch (err) {
       lastError = err;

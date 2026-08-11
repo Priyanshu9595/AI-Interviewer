@@ -1,6 +1,6 @@
 import { InterviewType, InterviewerPersonality, Prisma, QuestionCategory, QuestionDifficulty } from '@prisma/client';
 import { z } from 'zod';
-import { completeJson } from '../lib/ai';
+import { completeJson, SMART_MODEL } from '../lib/ai';
 import { env } from '../lib/env';
 import { prisma } from '../lib/prisma';
 import { LANGUAGES } from './personality';
@@ -239,7 +239,7 @@ difficulty is one of EASY, MEDIUM, HARD.`;
     try {
       generated = await completeJson({
         schema: questionSetSchema,
-        model: env.GROQ_SMART_MODEL,
+        model: SMART_MODEL,
         temperature: 0.7,
         maxTokens: 6000,
         messages: [
@@ -315,7 +315,7 @@ difficulty is one of EASY, MEDIUM, HARD.`;
     await prisma.questionSet.deleteMany({ where: { interviewSessionId } });
 
     const set = await prisma.questionSet.create({
-      data: { interviewSessionId, generatedBy: env.GROQ_SMART_MODEL },
+      data: { interviewSessionId, generatedBy: SMART_MODEL },
     });
 
     let order = 0;

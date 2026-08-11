@@ -1,6 +1,6 @@
 import { InterviewerPersonality, QuestionCategory } from '@prisma/client';
 import { z } from 'zod';
-import { ChatMessage, complete, completeJson } from '../lib/ai';
+import { ChatMessage, complete, completeJson, FAST_MODEL } from '../lib/ai';
 import { env } from '../lib/env';
 import { PERSONALITIES, languageName } from './personality';
 
@@ -211,7 +211,7 @@ Decide your next turn and return the JSON object.`,
     try {
       const turn = await completeJson({
         schema: turnSchema,
-        model: env.GROQ_FAST_MODEL,
+        model: FAST_MODEL,
         temperature: 0.6,
         maxTokens: 400,
         messages: this.history,
@@ -281,7 +281,7 @@ Decide your next turn and return the JSON object.`,
     try {
       const turn = await completeJson({
         schema: turnSchema,
-        model: env.GROQ_FAST_MODEL,
+        model: FAST_MODEL,
         temperature: 0.5,
         maxTokens: 300,
         messages: this.history,
@@ -322,7 +322,7 @@ Reply with the words to say. No preamble, no JSON.`,
 
     try {
       const reply = await complete({
-        model: env.GROQ_FAST_MODEL,
+        model: FAST_MODEL,
         temperature: 0.5,
         maxTokens: 200,
         messages,

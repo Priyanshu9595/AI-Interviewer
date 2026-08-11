@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { completeJson } from '../lib/ai';
+import { completeJson, SMART_MODEL } from '../lib/ai';
 import { env } from '../lib/env';
 import { prisma } from '../lib/prisma';
 
@@ -121,7 +121,7 @@ export class ResumeService {
 
     return completeJson({
       schema: profileSchema,
-      model: env.GROQ_SMART_MODEL,
+      model: SMART_MODEL,
       temperature: 0.2,
       maxTokens: 3000,
       messages: [
@@ -177,7 +177,7 @@ Return JSON: { fullName, headline, totalYearsExperience, skills[], roles[{title,
     try {
       const result = await completeJson({
         schema: resumeQuestionsSchema,
-        model: env.GROQ_SMART_MODEL,
+        model: SMART_MODEL,
         temperature: 0.6,
         maxTokens: 2000,
         messages: [

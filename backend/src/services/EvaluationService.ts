@@ -1,6 +1,6 @@
 import { HiringRecommendation, Prisma } from '@prisma/client';
 import { z } from 'zod';
-import { completeJson } from '../lib/ai';
+import { completeJson, SMART_MODEL } from '../lib/ai';
 import { env } from '../lib/env';
 import { prisma } from '../lib/prisma';
 import { extractSignals, scoreCommunication } from './CommunicationAnalyzer';
@@ -146,7 +146,7 @@ export class EvaluationService {
 
     const judgement = await completeJson({
       schema: llmSchema,
-      model: env.GROQ_SMART_MODEL,
+      model: SMART_MODEL,
       temperature: 0.2,
       maxTokens: 4000,
       messages: [

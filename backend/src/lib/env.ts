@@ -19,9 +19,23 @@ const envSchema = z.object({
 
   // LLM provider. Groq is the default because it is fast enough for a live
   // conversational loop.
-  GROQ_API_KEY: z.string().min(1),
+  /**
+   * Which service answers the model calls.
+   *
+   * `auto` takes Mistral when its key is present and Groq otherwise, so
+   * switching is a matter of adding a key. Name one explicitly when both keys
+   * are set.
+   */
+  LLM_PROVIDER: z.enum(['auto', 'groq', 'mistral']).default('auto'),
+
+  // Neither key is required on its own; the check below requires one of them.
+  GROQ_API_KEY: z.string().optional(),
   GROQ_FAST_MODEL: z.string().default('llama-3.1-8b-instant'),
   GROQ_SMART_MODEL: z.string().default('llama-3.3-70b-versatile'),
+
+  MISTRAL_API_KEY: z.string().optional(),
+  MISTRAL_FAST_MODEL: z.string().default('mistral-small-latest'),
+  MISTRAL_SMART_MODEL: z.string().default('mistral-large-latest'),
 
   // Email (Brevo transactional API). Without a key the service logs instead.
   API_KEY_FOR_EMAIL: z.string().optional(),
@@ -182,6 +196,30 @@ const envSchema = z.object({
     .string()
     .default('false')
     .transform((v) => v === 'true'),
+}).superRefine((cfg, ctx) => {
+  // The key was required by the field itself until there were two providers.
+  // Checked here instead so either one satisfies it, and so naming a provider
+  // without its key fails at boot rather than on the first question of an
+  // interview.
+  const wanted = cfg.LLM_PROVIDER;
+  const has = { groq: Boolean(cfg.GROQ_API_KEY), mistral: Boolean(cfg.MISTRAL_API_KEY) };
+
+  if (wanted !== 'auto' && !has[wanted]) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: [`${wanted.toUpperCase()}_API_KEY`],
+      message: `LLM_PROVIDER is ${wanted}, so ${wanted.toUpperCase()}_API_KEY must be set.`,
+    });
+    return;
+  }
+
+  if (wanted === 'auto' && !has.groq && !has.mistral) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['MISTRAL_API_KEY'],
+      message: 'Set MISTRAL_API_KEY or GROQ_API_KEY — the interviewer needs a language model.',
+    });
+  }
 });
 
 const parsed = envSchema.safeParse(process.env);

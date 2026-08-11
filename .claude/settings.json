@@ -79,7 +79,12 @@
       "Bash(sed -n '/presentButton: {/,/},/p' src/services/meetingBot/platforms/googleMeet.ts)",
       "Bash(perl -0pi -e 's/        await pushPcm\\\\\\(page, carry\\\\.subarray\\\\\\(0, usable\\\\\\)\\\\\\);/        await pushPcm\\(page, carry.subarray\\(0, usable\\), rate\\);/; s/      if \\\\\\(tail > 0\\\\\\) await pushPcm\\\\\\(page, carry\\\\.subarray\\\\\\(0, tail\\\\\\)\\\\\\);/      if \\(tail > 0\\) await pushPcm\\(page, carry.subarray\\(0, tail\\), rate\\);/' src/services/meetingBot/tts.ts)",
       "Bash(grep -vE \"npm notice|^$\")",
-      "Bash(perl -0pi -e \"s/socketUrl\\\\\\(this\\\\.language, this\\\\.format\\\\\\)/socketUrl\\(this.language, this.format, this.skills\\)/\" src/services/SpeechService.ts)"
+      "Bash(perl -0pi -e \"s/socketUrl\\\\\\(this\\\\.language, this\\\\.format\\\\\\)/socketUrl\\(this.language, this.format, this.skills\\)/\" src/services/SpeechService.ts)",
+      "Bash(grep -o \"^MISTRAL_API_KEY=.\\\\{0,6\\\\}\" .env)",
+      "Bash(perl -pi -e \"s/^import \\\\{ complete, completeJson \\\\} from '..\\\\/lib\\\\/ai';/import { complete, completeJson, FAST_MODEL, SMART_MODEL } from '..\\\\/lib\\\\/ai';/\" src/services/CodeAnalysisService.ts)",
+      "Bash(perl -pi -e \"s/^import \\\\{ completeJson \\\\} from '..\\\\/lib\\\\/ai';/import { completeJson, SMART_MODEL } from '..\\\\/lib\\\\/ai';/\" src/services/EvaluationService.ts src/services/QuestionGenerationService.ts src/services/ResumeService.ts)",
+      "Bash(perl -pi -e \"s/^import \\\\{ ChatMessage, complete, completeJson \\\\} from '..\\\\/lib\\\\/ai';/import { ChatMessage, complete, completeJson, FAST_MODEL } from '..\\\\/lib\\\\/ai';/\" src/services/LiveInterviewerService.ts)",
+      "Bash(npm uninstall *)"
     ]
   }
 }

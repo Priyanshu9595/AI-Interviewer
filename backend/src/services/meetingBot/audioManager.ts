@@ -31,8 +31,23 @@ export interface AudioManagerEvents {
   deaf: BridgeStatus | null;
 }
 
-/** 16 kHz mono is Deepgram's native rate for speech and a third of the bytes. */
-const CAPTURE_SAMPLE_RATE = 16_000;
+/**
+ * Sent at the rate the meeting arrives at, rather than downsampled first.
+ *
+ * This used to be 16 kHz, on the reasoning that it is Deepgram's native rate
+ * for speech and a third of the bytes. The bytes were true; the quality was
+ * not. Getting from the browser's 48 kHz to 16 kHz meant averaging every three
+ * samples, and a three-tap box filter is a poor anti-alias filter — around 4 dB
+ * down at the new Nyquist, so everything above 8 kHz folded back into the
+ * speech band as noise. Sibilants suffered most, which is exactly what makes a
+ * transcript full of near-miss words.
+ *
+ * Deepgram resamples internally with a filter built for the job, so handing it
+ * the original 48 kHz is both simpler and better. It costs three times the
+ * bandwidth to Deepgram — about 170 MB for a half-hour interview — and nothing
+ * else.
+ */
+const CAPTURE_SAMPLE_RATE = 48_000;
 const CAPTURE_FRAME_MS = 250;
 
 /**
@@ -81,7 +96,7 @@ export class AudioManager extends EventEmitter {
 
   constructor(
     private readonly page: Page,
-    private readonly opts: { interviewId: string; language: string },
+    private readonly opts: { interviewId: string; language: string; skills?: string[] },
   ) {
     super();
     this.tts = createTtsDriver();
@@ -292,11 +307,12 @@ export class AudioManager extends EventEmitter {
   }
 
   private openSpeechSession(): SpeechSession {
-    const session = new SpeechSession(this.opts.interviewId, this.opts.language, {
-      encoding: 'linear16',
-      sampleRate: CAPTURE_SAMPLE_RATE,
-      channels: 1,
-    });
+    const session = new SpeechSession(
+      this.opts.interviewId,
+      this.opts.language,
+      { encoding: 'linear16', sampleRate: CAPTURE_SAMPLE_RATE, channels: 1 },
+      this.opts.skills,
+    );
 
     session.on('transcript', (result: SpeechResult) => {
       if (!result.isFinal) {

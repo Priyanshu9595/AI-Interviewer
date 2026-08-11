@@ -141,6 +141,9 @@ export class MeetBotSession extends EventEmitter {
       this.audio = new AudioManager(this.browser.page, {
         interviewId: this.interviewId,
         language: context.language,
+        // The role's skills are the words most likely to be said and most
+        // likely to be misheard, so the recogniser is told to expect them.
+        skills: context.skills,
       });
       // Must happen before navigation: the bridge overrides APIs the meeting
       // client captures references to as soon as its bundle runs.
@@ -309,7 +312,7 @@ export class MeetBotSession extends EventEmitter {
         .catch(() => {});
     }
 
-    return { link, language: session.language };
+    return { link, language: session.language, skills: session.skills };
   }
 
   private watchForCrash(): void {

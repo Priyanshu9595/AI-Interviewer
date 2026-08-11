@@ -26,8 +26,30 @@ export interface AudioFormat {
   channels?: number;
 }
 
+/**
+ * Terms worth telling Deepgram to expect.
+ *
+ * A general model hears "Cuban Eddie's" for Kubernetes and "jangle rest" for
+ * Angular REST, and in a technical interview those are precisely the words the
+ * answer turns on. The skills the recruiter listed are the best available
+ * guess at what will be said, and boosting them costs nothing.
+ *
+ * Capped and length-filtered: Deepgram takes a bounded list, and a one or two
+ * character "skill" boosts noise rather than a word.
+ */
+function keywordParams(params: URLSearchParams, skills: string[] = []): void {
+  const terms = skills
+    .map((s) => s.trim())
+    .filter((s) => s.length > 2 && s.length <= 40)
+    .slice(0, 25);
+
+  // `:2` is the boost weight — enough to be reached for, not enough to be
+  // hallucinated into audio that plainly says something else.
+  for (const term of terms) params.append('keywords', `${term}:2`);
+}
+
 /** Deepgram's live transcription endpoint. */
-function socketUrl(language: string, format?: AudioFormat): string {
+function socketUrl(language: string, format?: AudioFormat, skills?: string[]): string {
   const params = new URLSearchParams({
     model: 'nova-2',
     // Deepgram wants "en", "hi", "es"; our sessions carry locales like "en-IN".
@@ -46,6 +68,8 @@ function socketUrl(language: string, format?: AudioFormat): string {
     params.set('sample_rate', String(format.sampleRate));
     params.set('channels', String(format.channels ?? 1));
   }
+
+  keywordParams(params, skills);
 
   return `wss://api.deepgram.com/v1/listen?${params}`;
 }
@@ -71,6 +95,8 @@ export class SpeechSession extends EventEmitter {
     private readonly language: string,
     /** Omit for container formats Deepgram can identify by itself. */
     private readonly format?: AudioFormat,
+    /** The role's required skills, boosted so they are heard correctly. */
+    private readonly skills?: string[],
   ) {
     super();
   }
@@ -81,7 +107,7 @@ export class SpeechSession extends EventEmitter {
       return;
     }
 
-    const socket = new WebSocket(socketUrl(this.language, this.format), {
+    const socket = new WebSocket(socketUrl(this.language, this.format, this.skills), {
       headers: { Authorization: `Token ${env.DEEPGRAM_API_KEY}` },
     });
     this.socket = socket;

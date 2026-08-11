@@ -78,7 +78,8 @@
       "Bash(sed -n '/chatButton: {/,/},/p' src/services/meetingBot/platforms/googleMeet.ts)",
       "Bash(sed -n '/presentButton: {/,/},/p' src/services/meetingBot/platforms/googleMeet.ts)",
       "Bash(perl -0pi -e 's/        await pushPcm\\\\\\(page, carry\\\\.subarray\\\\\\(0, usable\\\\\\)\\\\\\);/        await pushPcm\\(page, carry.subarray\\(0, usable\\), rate\\);/; s/      if \\\\\\(tail > 0\\\\\\) await pushPcm\\\\\\(page, carry\\\\.subarray\\\\\\(0, tail\\\\\\)\\\\\\);/      if \\(tail > 0\\) await pushPcm\\(page, carry.subarray\\(0, tail\\), rate\\);/' src/services/meetingBot/tts.ts)",
-      "Bash(grep -vE \"npm notice|^$\")"
+      "Bash(grep -vE \"npm notice|^$\")",
+      "Bash(perl -0pi -e \"s/socketUrl\\\\\\(this\\\\.language, this\\\\.format\\\\\\)/socketUrl\\(this.language, this.format, this.skills\\)/\" src/services/SpeechService.ts)"
     ]
   }
 }

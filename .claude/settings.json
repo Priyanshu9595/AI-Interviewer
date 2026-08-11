@@ -72,7 +72,8 @@
       "Bash(sed -n '/^model Candidate /,/^}/p' backend/prisma/schema.prisma)",
       "Bash(sed -n '/^model Question /,/^}/p' backend/prisma/schema.prisma)",
       "Bash(perl -pi -e 's/variant=\"error\"/tone=\"danger\"/g; s/variant=\"info\"/tone=\"info\"/g; s/\\\\bdestructive\\\\b/danger/g;' src/components/interviews/CandidateImport.tsx)",
-      "Bash(perl -pi -e \"s/^type Tab = 'live' \\\\| 'transcript' \\\\| 'details';/type Tab = 'live' | 'questions' | 'transcript' | 'details';/\" \"src/app/\\(app\\)/ai-interviews/[id]/page.tsx\")"
+      "Bash(perl -pi -e \"s/^type Tab = 'live' \\\\| 'transcript' \\\\| 'details';/type Tab = 'live' | 'questions' | 'transcript' | 'details';/\" \"src/app/\\(app\\)/ai-interviews/[id]/page.tsx\")",
+      "Bash(perl -pi -e \"s/^          await this\\\\.afterGreeting\\\\\\(\\\\\\);$/          await this.afterGreeting\\(text\\);/\" src/services/InterviewStateMachine.ts)"
     ]
   }
 }

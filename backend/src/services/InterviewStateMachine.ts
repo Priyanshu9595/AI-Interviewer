@@ -102,6 +102,8 @@ export class InterviewStateMachine extends EventEmitter {
   private closingAnswers = 0;
   /** Times we have asked a joined-but-silent candidate to say hello. */
   private greetingPrompts = 0;
+  /** Turns of hello-how-are-you spoken so far, capped so it stays brief. */
+  private greetingExchanges = 0;
   private startedAt: Date | null = null;
   private candidateName = 'Candidate';
   private askedIdentity = false;
@@ -327,7 +329,7 @@ export class InterviewStateMachine extends EventEmitter {
 
       switch (this.state) {
         case 'GREETING':
-          await this.afterGreeting();
+          await this.afterGreeting(text);
           break;
         case 'IDENTITY_VERIFICATION':
           await this.afterIdentity(text);
@@ -556,13 +558,62 @@ export class InterviewStateMachine extends EventEmitter {
     return Math.min(100, Math.round(((this.index + 1) / this.questions.length) * 100));
   }
 
-  private async afterGreeting() {
+  /**
+   * The hellos, before any of it is an interview.
+   *
+   * People do not open with an agenda. They say hello, ask how you are, wait,
+   * answer when it comes back to them, and only then get to the point. The
+   * interviewer used to skip all of that: it delivered its whole preamble to
+   * an empty room and moved on regardless of what the candidate said, so a
+   * candidate who replied "hi" was answered with the schedule and a candidate
+   * who asked "and yourself?" was never answered at all.
+   *
+   * At most two turns of this. It is warmth, not conversation, and a candidate
+   * who wants to keep chatting is better served by starting the interview.
+   */
+  private async afterGreeting(text: string) {
+    this.greetingExchanges++;
+
+    const said = bare(text);
+    const askedBack = /\b(what about you|how about you|how are you|and you|and yourself|yourself)\b/.test(said);
+
+    // Split rather than lumped together as "said how they are". A candidate
+    // who admits to being nervous and is told "glad to hear it" is worse off
+    // than one who got the old recorded announcement.
+    const unwell = /\b(nervous|anxious|scared|worried|tired|exhausted|stressed|unwell|sick|not (great|good|well)|bit off)\b/.test(
+      said,
+    );
+    const well = /\b(fine|good|great|well|okay|ok|alright|not bad|excellent|amazing|perfect|theek|badhiya|thik)\b/.test(
+      said,
+    );
+
+    // They said hello without saying how they are. Ask — once, and reworded,
+    // because repeating the question verbatim sounds like a stuck record.
+    if (!well && !unwell && !askedBack && this.greetingExchanges < 2) {
+      await this.say(this.interviewer?.howAreYou() ?? 'How are you doing today?', {
+        round: 'GREETING',
+        expectsAnswer: true,
+      });
+      return;
+    }
+
+    // Answering the question they asked, before moving on. Sailing past it is
+    // the single most robotic thing an interviewer can do.
+    const opener = unwell
+      ? 'That is completely normal, and there is no rush at all — we will take it at your pace.'
+      : askedBack
+        ? 'I am doing well, thank you for asking.'
+        : well
+          ? 'Glad to hear it.'
+          : 'Thank you.';
+
     this.state = 'IDENTITY_VERIFICATION';
     this.emit('state', { state: this.state, round: 'IDENTITY', progress: 0 });
 
     this.askedIdentity = true;
     await this.say(
-      `Before we start, could you confirm your full name and the role you have applied for?`,
+      this.interviewer?.intro(opener) ??
+        `${opener} Before we start, could you confirm your full name and the role you have applied for?`,
       { round: 'IDENTITY', expectsAnswer: true },
     );
   }

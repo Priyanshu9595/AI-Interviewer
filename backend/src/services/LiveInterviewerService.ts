@@ -127,8 +127,46 @@ If the candidate becomes distressed or asks to stop, confirm once kindly and use
   }
 
   /** The opening line, before any question is asked. */
+  /**
+   * The first thing said, and nothing more than that.
+   *
+   * This used to be the whole preamble in one breath — who I am, the role, how
+   * long we have, the shape of the interview, shall we begin. All true, and it
+   * lands like a recorded announcement, because a person greeting you does not
+   * deliver their agenda before you have said hello back.
+   *
+   * So it asks one question and stops. What follows depends on the answer;
+   * see the greeting exchange in InterviewStateMachine.
+   */
   greeting(): string {
-    return `Hello ${this.ctx.candidateName}, thanks for joining. I am ${this.persona.name}, and I will be your interviewer today for the ${this.ctx.jobTitle} role. We will spend about ${this.ctx.durationMinutes} minutes together — a few questions about your background and experience, and I will leave time at the end for your questions. Shall we begin?`;
+    return `Hi ${this.firstName()}, how are you?`;
+  }
+
+  /**
+   * What a person would actually call them.
+   *
+   * "Hi Priyanshu Raj" is how a form addresses you, not how someone opening a
+   * conversation does. Falls back to the whole string for a single-word name
+   * or anything else unexpected.
+   */
+  private firstName(): string {
+    const first = this.ctx.candidateName.trim().split(/\s+/)[0];
+    return first && first.length > 1 ? first : this.ctx.candidateName.trim();
+  }
+
+  /** Asked again when the candidate says hello back but not how they are. */
+  howAreYou(): string {
+    return 'How are you doing today?';
+  }
+
+  /**
+   * The handover from small talk into the interview proper.
+   *
+   * `opener` is the reply to whatever they just said, so this reads as one
+   * continuous turn rather than a warm line followed by a script.
+   */
+  intro(opener: string): string {
+    return `${opener} I am ${this.persona.name}, and I am going to be taking your interview today for the ${this.ctx.jobTitle} role. We have about ${this.ctx.durationMinutes} minutes — a few questions about your background and experience, and I will leave time at the end for any of yours. Before we start, could you confirm your full name and the role you have applied for?`;
   }
 
   async respond(args: {

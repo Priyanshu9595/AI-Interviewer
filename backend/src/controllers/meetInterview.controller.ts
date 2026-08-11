@@ -1,6 +1,8 @@
 import type { Response } from 'express';
 import { z } from 'zod';
 import type { AuthRequest } from '../lib/auth';
+import { mobileField } from '../lib/candidateFields';
+import { CandidateImportService } from '../services/CandidateImportService';
 import { badRequest, conflict, notFound, param } from '../lib/http';
 import { env } from '../lib/env';
 import { prisma } from '../lib/prisma';
@@ -21,9 +23,19 @@ import { MeetBotManager } from '../services/meetingBot/MeetBotManager';
  * exports therefore work on these interviews with no special-casing anywhere.
  */
 
+/**
+ * Ceiling on one import.
+ *
+ * Not a database limit — it is the LLM. Every booking queues a question-set
+ * generation, so a thousand-row paste would spend the day in a rate limit and
+ * leave interviews without questions.
+ */
+const MAX_IMPORT_ROWS = 200;
+
 const createSchema = z.object({
   candidateName: z.string().min(2, 'Enter the candidate’s name'),
   candidateEmail: z.string().email('Enter a valid candidate email'),
+  candidateMobile: mobileField,
   jobTitle: z.string().min(2, 'Enter the job title'),
   jobDescription: z
     .string()
@@ -222,9 +234,16 @@ function present(interview: Awaited<ReturnType<typeof ownedInterview>>) {
 // Create
 // ---------------------------------------------------------------------------
 
-export const createMeetInterview = async (req: AuthRequest, res: Response) => {
-  const data = createSchema.parse(req.body);
-
+/**
+ * Books one interview: a session, a candidate, a scheduled bot run and the
+ * question generation behind it.
+ *
+ * Extracted so a single booking and one row of a spreadsheet import go through
+ * exactly the same code. The alternative — a second, simpler path for bulk —
+ * is how bulk-created interviews end up quietly missing their reminders or
+ * their questions.
+ */
+async function bookInterview(userId: string, data: z.infer<typeof createSchema>): Promise<string> {
   // Fail on the link before anything is written. A recruiter who mistyped it
   // should find out while the form is open, not at the scheduled time.
   let link;
@@ -245,13 +264,18 @@ export const createMeetInterview = async (req: AuthRequest, res: Response) => {
   // keeps one record and one history.
   const candidate = await prisma.candidate.upsert({
     where: { email },
-    create: { email, name: data.candidateName.trim() },
-    update: { name: data.candidateName.trim() },
+    create: { email, name: data.candidateName.trim(), mobile: data.candidateMobile ?? null },
+    update: {
+      name: data.candidateName.trim(),
+      // Only overwrite a stored number when this booking supplied one, so
+      // scheduling a second interview without it does not erase the first.
+      ...(data.candidateMobile ? { mobile: data.candidateMobile } : {}),
+    },
   });
 
   const session = await prisma.interviewSession.create({
     data: {
-      userId: req.user!.userId,
+      userId,
       title: data.jobTitle.trim(),
       jobDescription: data.jobDescription,
       skills: data.requiredSkills.map((s) => s.trim()).filter(Boolean),
@@ -310,7 +334,13 @@ export const createMeetInterview = async (req: AuthRequest, res: Response) => {
   // interview is joined at 3:00 rather than whenever the tick next lands.
   void MeetBotManager.startIfDue(interview.id).then(() => MeetBotManager.armNextLaunch());
 
-  const created = await ownedInterview(req, interview.id);
+  return interview.id;
+}
+
+export const createMeetInterview = async (req: AuthRequest, res: Response) => {
+  const data = createSchema.parse(req.body);
+  const interviewId = await bookInterview(req.user!.userId, data);
+  const created = await ownedInterview(req, interviewId);
 
   res.status(201).json({
     ...present(created),
@@ -319,6 +349,135 @@ export const createMeetInterview = async (req: AuthRequest, res: Response) => {
     codingUrlReachable: data.codingEnabled ? await codingPageReachable() : null,
   });
 };
+
+// ---------------------------------------------------------------------------
+// Bulk create
+// ---------------------------------------------------------------------------
+
+/** The CSV template, so the recruiter never has to guess the headings. */
+export const downloadImportTemplate = async (_req: AuthRequest, res: Response) => {
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="candidates-template.csv"');
+  // A BOM, because without one Excel opens a UTF-8 CSV as Latin-1 and turns
+  // every non-ASCII name into mojibake before the recruiter has typed anything.
+  res.send('﻿' + CandidateImportService.templateCsv());
+};
+
+/**
+ * Reads an uploaded file and hands back rows with their problems attached.
+ *
+ * Nothing is written here. The recruiter gets a table they can fix in place,
+ * which matters because the common failure is one bad cell in fifty good rows
+ * and re-exporting the whole spreadsheet to fix it is miserable.
+ */
+export const previewCandidateImport = async (req: AuthRequest, res: Response) => {
+  const file = (req as AuthRequest & { file?: { buffer: Buffer; originalname: string } }).file;
+  if (!file) throw badRequest('Attach a CSV or Excel file.');
+
+  let result;
+  try {
+    result = CandidateImportService.parse(file.buffer, file.originalname);
+  } catch (err) {
+    throw badRequest((err as Error).message);
+  }
+
+  if (result.rows.length === 0) throw badRequest('That file has no candidate rows in it.');
+  if (result.rows.length > MAX_IMPORT_ROWS) {
+    throw badRequest(`That file has ${result.rows.length} rows. Import at most ${MAX_IMPORT_ROWS} at a time.`);
+  }
+
+  res.json(result);
+};
+
+const bulkSchema = createSchema
+  // The per-candidate fields come from the rows instead.
+  .omit({ candidateName: true, candidateEmail: true, candidateMobile: true, meetLink: true, scheduledAt: true })
+  .extend({
+    /** Applied to any row that did not bring its own. */
+    meetLink: z.string().trim().default(''),
+    scheduledAt: z.string().trim().default(''),
+    candidates: z
+      .array(
+        z.object({
+          row: z.coerce.number().int().default(0),
+          name: z.string(),
+          email: z.string(),
+          mobile: z.string().optional(),
+          meetLink: z.string().optional(),
+          scheduledAt: z.string().optional(),
+        }),
+      )
+      .min(1, 'Add at least one candidate')
+      .max(MAX_IMPORT_ROWS, `Import at most ${MAX_IMPORT_ROWS} candidates at a time`),
+  });
+
+/**
+ * Books every row, reporting each one's fate separately.
+ *
+ * Partial success is the point. Forty-eight good rows must not be thrown away
+ * because two had a typo — the recruiter fixes those two and imports them
+ * again, and the ones that worked are already booked. Rows are booked in
+ * sequence rather than in parallel: each one starts an LLM question-generation
+ * job and arms a bot launch, and fifty of those at once is a stampede.
+ */
+export const bulkCreateMeetInterviews = async (req: AuthRequest, res: Response) => {
+  const data = bulkSchema.parse(req.body);
+
+  const results: Array<{
+    row: number;
+    name: string;
+    email: string;
+    ok: boolean;
+    interviewId?: string;
+    error?: string;
+  }> = [];
+
+  for (const row of data.candidates) {
+    const meetLink = (row.meetLink?.trim() || data.meetLink).trim();
+    const scheduledAt = (row.scheduledAt?.trim() || data.scheduledAt).trim();
+
+    try {
+      if (!meetLink) throw badRequest('No meeting link for this candidate, and none was set for the batch.');
+      if (!scheduledAt) throw badRequest('No date and time for this candidate, and none was set for the batch.');
+
+      const parsed = createSchema.parse({
+        ...data,
+        candidateName: row.name,
+        candidateEmail: row.email,
+        candidateMobile: row.mobile,
+        meetLink,
+        scheduledAt,
+      });
+
+      const interviewId = await bookInterview(req.user!.userId, parsed);
+      results.push({ row: row.row, name: row.name, email: row.email, ok: true, interviewId });
+    } catch (err) {
+      results.push({
+        row: row.row,
+        name: row.name,
+        email: row.email,
+        ok: false,
+        error: describeBookingFailure(err),
+      });
+    }
+  }
+
+  const created = results.filter((r) => r.ok).length;
+  // 207 would be pedantically right for a mixed outcome; 201 keeps every
+  // client on one path, and the body says exactly what happened.
+  res.status(created > 0 ? 201 : 400).json({ created, failed: results.length - created, results });
+};
+
+/** Turns whatever a booking threw into one line a recruiter can act on. */
+function describeBookingFailure(err: unknown): string {
+  if (err instanceof z.ZodError) {
+    return err.issues.map((i) => i.message).join('; ');
+  }
+  if (err instanceof BotError) return err.message;
+
+  const message = (err as { message?: string })?.message;
+  return message && message.length < 200 ? message : 'Could not book this interview.';
+}
 
 // ---------------------------------------------------------------------------
 // Read

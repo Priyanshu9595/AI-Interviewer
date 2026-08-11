@@ -272,6 +272,10 @@ export const deleteSession = async (req: AuthRequest, res: Response) => {
 // ---------------------------------------------------------------------------
 
 export const generateQuestions = async (req: AuthRequest, res: Response) => {
+  // Regenerating replaces the whole set, so it is the most destructive of the
+  // question routes and needs the same guard as the others.
+  await assertNotStarted(param(req, 'id'), req.user!.userId);
+
   const session = await prisma.interviewSession.findFirst({
     where: { id: param(req, 'id'), userId: req.user!.userId },
   });
@@ -287,15 +291,69 @@ export const generateQuestions = async (req: AuthRequest, res: Response) => {
   res.json(set);
 };
 
+/**
+ * The coding-exercise payload, as the editor and the candidate's tab both see
+ * it.
+ *
+ * Kept explicit rather than passing `meta` through as free-form JSON: this
+ * object is what the code runner grades against, so a recruiter who mistypes a
+ * field name would otherwise produce an exercise that silently fails every
+ * submission.
+ */
+const codingMetaSchema = z.object({
+  title: z.string().min(2).optional(),
+  constraints: z.array(z.string()).optional(),
+  starterCode: z.string().optional(),
+  optimalTime: z.string().optional(),
+  optimalSpace: z.string().optional(),
+  testCases: z
+    .array(
+      z.object({
+        input: z.string(),
+        output: z.string(),
+        /// Hidden cases are graded but never shown to the candidate.
+        hidden: z.boolean().optional(),
+      }),
+    )
+    .optional(),
+});
+
 const questionPatchSchema = z.object({
   content: z.string().min(5).optional(),
   expectedAnswer: z.string().optional(),
   difficulty: z.enum(['EASY', 'MEDIUM', 'HARD']).optional(),
   skill: z.string().optional(),
+  meta: codingMetaSchema.optional(),
 });
+
+/**
+ * Refuses to touch the question set once the interview is under way.
+ *
+ * The state machine reads its questions when the interview starts and works
+ * from that list. Editing afterwards changes what the report is written
+ * against but not what was actually asked, which is the sort of mismatch
+ * nobody ever discovers until they are defending a hiring decision.
+ */
+async function assertNotStarted(sessionId: string, userId: string) {
+  const started = await prisma.sessionCandidate.findFirst({
+    where: {
+      interviewSessionId: sessionId,
+      interviewSession: { userId },
+      // Everything except the states that mean the interviewer never spoke to
+      // them: still waiting, never turned up, or called off.
+      status: { notIn: ['INVITED', 'ABSENT', 'CANCELLED'] },
+    },
+    select: { id: true },
+  });
+
+  if (started) {
+    throw badRequest('This interview has already started, so its questions can no longer be changed.');
+  }
+}
 
 export const updateQuestion = async (req: AuthRequest, res: Response) => {
   const data = questionPatchSchema.parse(req.body);
+  await assertNotStarted(param(req, 'id'), req.user!.userId);
 
   // Ownership is enforced through the session, not the question id.
   const question = await prisma.question.findFirst({
@@ -306,10 +364,25 @@ export const updateQuestion = async (req: AuthRequest, res: Response) => {
   });
   if (!question) throw notFound('Question not found');
 
-  res.json(await prisma.question.update({ where: { id: question.id }, data }));
+  const { meta, ...rest } = data;
+
+  res.json(
+    await prisma.question.update({
+      where: { id: question.id },
+      data: {
+        ...rest,
+        // Merged, not replaced: the editor sends only the fields it shows, and
+        // the generator writes others (redFlags, expectedPoints) that nothing
+        // in the UI would put back.
+        ...(meta ? { meta: { ...(question.meta as object | null), ...meta } } : {}),
+      },
+    }),
+  );
 };
 
 export const deleteQuestion = async (req: AuthRequest, res: Response) => {
+  await assertNotStarted(param(req, 'id'), req.user!.userId);
+
   const question = await prisma.question.findFirst({
     where: {
       id: param(req, 'questionId'),
@@ -328,10 +401,12 @@ const addQuestionSchema = z.object({
   difficulty: z.enum(['EASY', 'MEDIUM', 'HARD']).default('MEDIUM'),
   skill: z.string().optional(),
   expectedAnswer: z.string().optional(),
+  meta: codingMetaSchema.optional(),
 });
 
 export const addQuestion = async (req: AuthRequest, res: Response) => {
   const data = addQuestionSchema.parse(req.body);
+  await assertNotStarted(param(req, 'id'), req.user!.userId);
 
   const session = await prisma.interviewSession.findFirst({
     where: { id: param(req, 'id'), userId: req.user!.userId },
@@ -354,6 +429,7 @@ export const addQuestion = async (req: AuthRequest, res: Response) => {
         difficulty: data.difficulty,
         skill: data.skill ?? null,
         expectedAnswer: data.expectedAnswer ?? null,
+        meta: data.meta ?? undefined,
         order,
       },
     }),

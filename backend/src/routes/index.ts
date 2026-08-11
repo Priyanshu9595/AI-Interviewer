@@ -132,6 +132,13 @@ router.get('/sessions/:id/export.xlsx', asyncHandler(reports.downloadSessionExce
 // Declared before the parameterised routes below so `/interviews` itself is not
 // swallowed by a path expecting an id.
 router.get('/interviews/queue', asyncHandler(meetInterview.getMeetBotQueue));
+router.get('/interviews/import/template', asyncHandler(meetInterview.downloadImportTemplate));
+router.post(
+  '/interviews/import/preview',
+  sheetUpload.single('file'),
+  asyncHandler(meetInterview.previewCandidateImport),
+);
+router.post('/interviews/bulk', asyncHandler(meetInterview.bulkCreateMeetInterviews));
 router.get('/interviews', asyncHandler(meetInterview.listMeetInterviews));
 router.post('/interviews', asyncHandler(meetInterview.createMeetInterview));
 router.get('/interviews/:id', asyncHandler(meetInterview.getMeetInterview));

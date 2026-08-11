@@ -20,6 +20,7 @@ import {
   Select,
   Textarea,
 } from '@/components/ui';
+import { CandidateImport, type ImportRow } from '@/components/interviews/CandidateImport';
 import { api, errorMessage } from '@/lib/api';
 import {
   PLATFORM_LABEL,
@@ -35,6 +36,16 @@ function defaultSchedule() {
   d.setDate(d.getDate() + 1);
   d.setHours(10, 0, 0, 0);
   return toDateTimeLocal(d);
+}
+
+/** What the server says happened to one row of a bulk import. */
+interface BulkResult {
+  row: number;
+  name: string;
+  email: string;
+  ok: boolean;
+  interviewId?: string;
+  error?: string;
 }
 
 const EXPERIENCE_LEVELS = [
@@ -53,9 +64,16 @@ export default function NewMeetInterviewPage() {
   const [error, setError] = useState('');
   const [skillDraft, setSkillDraft] = useState('');
 
+  const [mode, setMode] = useState<'one' | 'bulk'>('one');
+  const bulk = mode === 'bulk';
+  const [importRows, setImportRows] = useState<ImportRow[]>([]);
+  /** Per-row outcomes from the last bulk submit, kept so failures stay visible. */
+  const [bulkResults, setBulkResults] = useState<BulkResult[] | null>(null);
+
   const [form, setForm] = useState({
     candidateName: '',
     candidateEmail: '',
+    candidateMobile: '',
     jobTitle: '',
     jobDescription: '',
     requiredSkills: [] as string[],
@@ -91,17 +109,39 @@ export default function NewMeetInterviewPage() {
 
   const problems = useMemo(() => {
     const list: string[] = [];
-    if (form.candidateName.trim().length < 2) list.push('Enter the candidate’s name.');
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.candidateEmail.trim())) list.push('Enter a valid candidate email.');
+
+    if (bulk) {
+      if (importRows.length === 0) list.push('Upload a file with at least one candidate.');
+      const bad = importRows.filter((r) => Object.keys(r.errors).length > 0).length;
+      if (bad) list.push(`${bad} row${bad === 1 ? '' : 's'} still need fixing.`);
+      // A row that brought neither is only bookable if the batch supplies one.
+      const orphaned = importRows.filter((r) => !r.meetLink?.trim() && !form.meetLink.trim()).length;
+      if (orphaned) list.push(`${orphaned} row(s) have no meeting link, and none is set below.`);
+    } else {
+      if (form.candidateName.trim().length < 2) list.push('Enter the candidate’s name.');
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.candidateEmail.trim())) list.push('Enter a valid candidate email.');
+    }
+
     if (form.jobTitle.trim().length < 2) list.push('Enter the job title.');
     if (jdLength < 30) list.push(`The job description needs at least 30 characters (currently ${jdLength}).`);
     if (form.requiredSkills.length === 0) list.push('Add at least one required skill.');
 
-    const link = validateMeetingLink(form.meetLink);
+    // In bulk the batch link is a fallback, so an empty one is fine — rows may
+    // each carry their own. A bad one is never fine.
+    const link = bulk && !form.meetLink.trim() ? null : validateMeetingLink(form.meetLink);
     if (link) list.push(link);
 
     return list;
-  }, [form.candidateName, form.candidateEmail, form.jobTitle, form.requiredSkills.length, form.meetLink, jdLength]);
+  }, [
+    bulk,
+    importRows,
+    form.candidateName,
+    form.candidateEmail,
+    form.jobTitle,
+    form.requiredSkills.length,
+    form.meetLink,
+    jdLength,
+  ]);
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -113,18 +153,52 @@ export default function NewMeetInterviewPage() {
     }
 
     setSubmitting(true);
+    setBulkResults(null);
     try {
-      const { data } = await api.post<MeetInterview>('/interviews', {
-        ...form,
-        // datetime-local has no zone; the browser's own offset is the one the
-        // recruiter meant.
-        scheduledAt: new Date(form.scheduledAt).toISOString(),
-      });
+      // datetime-local has no zone; the browser's own offset is the one the
+      // recruiter meant.
+      const scheduledAt = form.scheduledAt ? new Date(form.scheduledAt).toISOString() : '';
+
+      if (bulk) {
+        const { data } = await api.post<{ created: number; failed: number; results: BulkResult[] }>(
+          '/interviews/bulk',
+          {
+            ...form,
+            scheduledAt,
+            candidates: importRows.map((r) => ({
+              row: r.row,
+              name: r.name,
+              email: r.email,
+              mobile: r.mobile,
+              meetLink: r.meetLink,
+              scheduledAt: r.scheduledAt,
+            })),
+          },
+        );
+
+        setBulkResults(data.results);
+
+        if (data.failed === 0) {
+          toast.success('Interviews scheduled', `${data.created} interview${data.created === 1 ? '' : 's'} booked.`);
+          router.push('/ai-interviews');
+          return;
+        }
+
+        // Stay on the page. The rows that worked are booked and gone from the
+        // list; what is left is exactly what still needs attention.
+        setImportRows((rows) =>
+          rows.filter((r) => !data.results.some((res) => res.ok && res.row === r.row && res.email === r.email)),
+        );
+        setError(`${data.created} booked, ${data.failed} could not be. See the list below.`);
+        return;
+      }
+
+      const { data } = await api.post<MeetInterview>('/interviews', { ...form, scheduledAt });
 
       toast.success('Interview scheduled', `The AI interviewer will join the meeting shortly before ${new Date(data.scheduledAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}.`);
       router.push(`/ai-interviews/${data.id}`);
     } catch (err) {
-      setError(errorMessage(err, 'Could not schedule the interview'));
+      setError(errorMessage(err, bulk ? 'Could not book those interviews' : 'Could not schedule the interview'));
     } finally {
       setSubmitting(false);
     }
@@ -142,30 +216,74 @@ export default function NewMeetInterviewPage() {
         <Card>
           <CardHeader>
             <div>
-              <CardTitle>Candidate</CardTitle>
-              <CardDescription>Who is being interviewed, and where they are told to go.</CardDescription>
+              <CardTitle>{bulk ? 'Candidates' : 'Candidate'}</CardTitle>
+              <CardDescription>
+                {bulk
+                  ? 'One interview is booked per row. Everything below is shared by all of them.'
+                  : 'Who is being interviewed, and where they are told to go.'}
+              </CardDescription>
+            </div>
+            <div className="flex rounded-md border border-border p-0.5">
+              {(
+                [
+                  ['one', 'One candidate'],
+                  ['bulk', 'Bulk upload'],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setMode(value)}
+                  className={
+                    'rounded px-3 py-1 text-sm font-medium transition-colors ' +
+                    (mode === value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground')
+                  }
+                >
+                  {label}
+                </button>
+              ))}
             </div>
           </CardHeader>
-          <CardBody className="grid gap-4 sm:grid-cols-2">
-            <Field label="Candidate name" required>
-              <Input
-                value={form.candidateName}
-                onChange={(e) => set('candidateName', e.target.value)}
-                placeholder="Priyanshu Raj"
-                autoComplete="off"
+          {bulk ? (
+            <CardBody>
+              <CandidateImport
+                rows={importRows}
+                onChange={setImportRows}
+                fallbackMeetLink={form.meetLink}
+                fallbackScheduledAt={form.scheduledAt}
               />
-            </Field>
+            </CardBody>
+          ) : (
+            <CardBody className="grid gap-4 sm:grid-cols-2">
+              <Field label="Candidate name" required>
+                <Input
+                  value={form.candidateName}
+                  onChange={(e) => set('candidateName', e.target.value)}
+                  placeholder="Priyanshu Raj"
+                  autoComplete="off"
+                />
+              </Field>
 
-            <Field label="Candidate email" required hint="Receives the invitation and reminders.">
-              <Input
-                type="email"
-                value={form.candidateEmail}
-                onChange={(e) => set('candidateEmail', e.target.value)}
-                placeholder="candidate@example.com"
-                autoComplete="off"
-              />
-            </Field>
-          </CardBody>
+              <Field label="Candidate email" required hint="Receives the invitation and reminders.">
+                <Input
+                  type="email"
+                  value={form.candidateEmail}
+                  onChange={(e) => set('candidateEmail', e.target.value)}
+                  placeholder="candidate@example.com"
+                  autoComplete="off"
+                />
+              </Field>
+
+              <Field label="Mobile number" hint="Optional. So you can reach them if they do not turn up.">
+                <Input
+                  value={form.candidateMobile}
+                  onChange={(e) => set('candidateMobile', e.target.value)}
+                  placeholder="+91 98765 43210"
+                  autoComplete="off"
+                />
+              </Field>
+            </CardBody>
+          )}
         </Card>
 
         <Card>
@@ -264,15 +382,17 @@ export default function NewMeetInterviewPage() {
           </CardHeader>
           <CardBody className="space-y-4">
             <Field
-              label="Existing meeting link"
-              required
+              label={bulk ? 'Meeting link for rows without one' : 'Existing meeting link'}
+              required={!bulk}
               error={linkError ?? undefined}
               hint={
                 linkError
                   ? undefined
                   : platform
                     ? `Recognised as a ${PLATFORM_LABEL[platform]} link.`
-                    : 'Google Meet, Zoom or Microsoft Teams'
+                    : bulk
+                      ? 'Used only where the file left the column blank. Leave empty if every row has its own.'
+                      : 'Google Meet, Zoom or Microsoft Teams'
               }
             >
               <div className="relative">
@@ -294,7 +414,15 @@ export default function NewMeetInterviewPage() {
             </Field>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Scheduled time" required hint="The interviewer joins five minutes before this.">
+              <Field
+                label={bulk ? 'Time for rows without one' : 'Scheduled time'}
+                required={!bulk}
+                hint={
+                  bulk
+                    ? 'Used only where the file left the column blank.'
+                    : 'The interviewer joins the meeting at this time.'
+                }
+              >
                 <Input
                   type="datetime-local"
                   value={form.scheduledAt}
@@ -390,6 +518,32 @@ export default function NewMeetInterviewPage() {
 
         {error && <Alert tone="danger">{error}</Alert>}
 
+        {bulkResults && bulkResults.some((r) => !r.ok) && (
+          <Card>
+            <CardHeader>
+              <div>
+                <CardTitle>Rows that could not be booked</CardTitle>
+                <CardDescription>
+                  Everything else is already scheduled. Fix these above and submit again — only what is still listed
+                  will be sent.
+                </CardDescription>
+              </div>
+            </CardHeader>
+            <CardBody className="space-y-2">
+              {bulkResults
+                .filter((r) => !r.ok)
+                .map((r) => (
+                  <div key={`${r.row}-${r.email}`} className="rounded-md border border-danger/20 bg-danger-soft px-3 py-2">
+                    <p className="text-sm font-medium text-foreground">
+                      Row {r.row}: {r.name || r.email}
+                    </p>
+                    <p className="text-sm text-danger">{r.error}</p>
+                  </div>
+                ))}
+            </CardBody>
+          </Card>
+        )}
+
         <div className="flex flex-wrap items-center justify-between gap-3 pb-6">
           <p className="text-xs text-muted-foreground">
             <Bot className="mr-1 inline h-3.5 w-3.5" />
@@ -400,7 +554,9 @@ export default function NewMeetInterviewPage() {
               Cancel
             </Button>
             <Button type="submit" loading={submitting} disabled={problems.length > 0}>
-              Schedule interview
+              {bulk
+                ? `Schedule ${importRows.length || ''} interview${importRows.length === 1 ? '' : 's'}`.replace('  ', ' ')
+                : 'Schedule interview'}
             </Button>
           </div>
         </div>

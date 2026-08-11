@@ -65,7 +65,14 @@
       "Bash(node -e \"const j=require\\('/tmp/h.json'\\);console.log\\('  status      :',j.status\\);console.log\\('  database    :',j.database\\);console.log\\('  emailSender :',j.emailSender\\);console.log\\('  speech      :',j.speechToText\\);console.log\\('  meetBot     :',JSON.stringify\\(j.meetBot\\)\\);console.log\\('  uptime      :',Math.round\\(j.uptimeSeconds\\),'sec'\\)\")",
       "Read(//d/tmp/**)",
       "Bash(curl -s -m 20 https://ai-interviewer-api-priyanshu.fly.dev/health -o health.json)",
-      "Bash(perl -pi -e \"s/^function \\(bare|isDecline|isBareAffirmative\\)\\\\\\(/export function \\\\$1\\(/\" src/services/InterviewStateMachine.ts)"
+      "Bash(perl -pi -e \"s/^function \\(bare|isDecline|isBareAffirmative\\)\\\\\\(/export function \\\\$1\\(/\" src/services/InterviewStateMachine.ts)",
+      "Bash(curl -s -o /dev/null -w '  status: %{http_code}\\\\n' -m 25 https://ai-interviewer-xi-nine.vercel.app/sessions/new?cb=__TRACKED_VAR____TRACKED_VAR__)",
+      "Bash(curl -s -I -m 25 https://ai-interviewer-xi-nine.vercel.app/sessions/new)",
+      "Bash(curl -s -m 25 https://ai-interviewer-xi-nine.vercel.app/sessions/new?cb=__TRACKED_VAR__)",
+      "Bash(sed -n '/^model Candidate /,/^}/p' backend/prisma/schema.prisma)",
+      "Bash(sed -n '/^model Question /,/^}/p' backend/prisma/schema.prisma)",
+      "Bash(perl -pi -e 's/variant=\"error\"/tone=\"danger\"/g; s/variant=\"info\"/tone=\"info\"/g; s/\\\\bdestructive\\\\b/danger/g;' src/components/interviews/CandidateImport.tsx)",
+      "Bash(perl -pi -e \"s/^type Tab = 'live' \\\\| 'transcript' \\\\| 'details';/type Tab = 'live' | 'questions' | 'transcript' | 'details';/\" \"src/app/\\(app\\)/ai-interviews/[id]/page.tsx\")"
     ]
   }
 }

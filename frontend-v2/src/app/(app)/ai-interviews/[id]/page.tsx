@@ -15,6 +15,7 @@ import {
   Square,
   User,
 } from 'lucide-react';
+import { QuestionEditor } from '@/components/interviews/QuestionEditor';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { useToast } from '@/components/Toast';
 import {
@@ -65,7 +66,7 @@ const stageIndex = (status: MeetBotStatus) => STAGES.findIndex((s) => s.matches.
 /** Backs up the socket, so status still advances if the websocket cannot connect. */
 const POLL_MS = 6_000;
 
-type Tab = 'live' | 'transcript' | 'details';
+type Tab = 'live' | 'questions' | 'transcript' | 'details';
 
 export default function MeetInterviewPage() {
   const params = useParams<{ id: string }>();
@@ -284,6 +285,7 @@ export default function MeetInterviewPage() {
         <Tabs
           tabs={[
             { id: 'live' as const, label: 'Live' },
+            { id: 'questions' as const, label: 'Questions' },
             { id: 'transcript' as const, label: 'Transcript', count: messages.length },
             { id: 'details' as const, label: 'Details' },
           ]}
@@ -294,6 +296,15 @@ export default function MeetInterviewPage() {
         <div className="pt-4">
           {tab === 'live' && (
             <LiveConversation messages={messages} interim={live.interim} status={status} detail={detail} />
+          )}
+          {tab === 'questions' && (
+            <QuestionEditor
+              sessionId={interview.sessionId}
+              // The bot's own status is the honest signal here. `SCHEDULED` and
+              // `FAILED` both mean nothing was ever asked, so a failed run can
+              // still be corrected and retried.
+              editable={status === 'SCHEDULED' || status === 'FAILED'}
+            />
           )}
           {tab === 'transcript' && <Transcript messages={messages} onRefresh={() => void loadTranscript()} />}
           {tab === 'details' && <Details interview={interview} reportId={reportId} />}

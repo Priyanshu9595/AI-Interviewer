@@ -87,6 +87,9 @@ httpServer.listen(env.PORT, () => {
     // Printed after the scheduler is armed, so the queue shown is the queue it
     // will actually act on.
     .then(() => MeetBotManager.logUpcoming())
+    // Pulls Chromium off disk now rather than making the first interview of
+    // this deployment wait forty seconds for it.
+    .then(() => MeetBotManager.warmBrowserBinary())
     .catch(() => {});
 });
 

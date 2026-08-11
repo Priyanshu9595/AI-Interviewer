@@ -1,5 +1,8 @@
+import fs from 'fs/promises';
 import os from 'os';
+import path from 'path';
 import { randomUUID } from 'crypto';
+import { chromium } from 'playwright';
 import type { MeetBotStatus } from '@prisma/client';
 import { env } from '../../lib/env';
 import { prisma } from '../../lib/prisma';
@@ -158,6 +161,11 @@ export class MeetBotManager {
       void prisma.meetBotRun
         .update({ where: { sessionCandidateId: interviewId }, data: { lockedBy: null, lockedAt: null } })
         .catch(() => {});
+
+      // An interview is the heaviest thing this machine does, and Chromium can
+      // be pushed out of the page cache by its own memory use. Pulling it back
+      // now, while nothing is waiting, keeps the next start quick.
+      void this.warmBrowserBinary();
     });
 
     // Deliberately not awaited: an interview runs for half an hour, and the
@@ -364,6 +372,50 @@ export class MeetBotManager {
   static clearLaunchTimer(): void {
     if (this.launchTimer) clearTimeout(this.launchTimer);
     this.launchTimer = null;
+  }
+
+  /**
+   * Opens and closes a throwaway browser, so the first real one is quick.
+   *
+   * Measured on the deployed machine: launching Chromium for the first time
+   * after boot takes 40 seconds, and every launch after that takes 0.4. None
+   * of that is the profile or the volume — an empty directory is just as slow
+   * the first time. It is the two hundred megabytes of Chromium binary being
+   * read off disk into the page cache.
+   *
+   * Which is a bill somebody has to pay, and it was being paid by whichever
+   * interview happened to be first after a deploy. An instant meeting has no
+   * lead time to hide it in, so it showed up as a minute of the candidate
+   * sitting alone.
+   *
+   * A separate temporary directory, never the bot's real profile: Chromium
+   * takes an exclusive lock on a user-data directory, and this must not be
+   * able to collide with an interview.
+   */
+  static async warmBrowserBinary(): Promise<void> {
+    if (!env.MEET_BOT_ENABLED) return;
+    if (this.sessions.size > 0) return; // an interview owns the CPU right now
+
+    const started = Date.now();
+    let dir: string | null = null;
+
+    try {
+      dir = await fs.mkdtemp(path.join(os.tmpdir(), 'meet-bot-warm-'));
+      const context = await chromium.launchPersistentContext(dir, {
+        headless: env.MEET_BOT_HEADLESS,
+        args: ['--no-sandbox', '--disable-dev-shm-usage', '--mute-audio'],
+        viewport: { width: 640, height: 480 },
+      });
+      await context.close();
+
+      const seconds = ((Date.now() - started) / 1000).toFixed(1);
+      console.log(`[meet-bot] browser warm (${seconds}s) — the next interview starts without waiting for it`);
+    } catch (err) {
+      // Never fatal. A cold start is slow, not broken.
+      console.warn(`[meet-bot] could not pre-warm the browser: ${(err as Error).message}`);
+    } finally {
+      if (dir) await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
+    }
   }
 
   /**

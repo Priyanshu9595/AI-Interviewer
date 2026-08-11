@@ -6,7 +6,7 @@ import { prisma } from '../../lib/prisma';
 import { EvaluationQueue } from '../EvaluationQueue';
 import { InterviewStateMachine, type InterviewState } from '../InterviewStateMachine';
 import { AudioManager } from './audioManager';
-import { launchBrowser, type BotBrowser } from './browser';
+import { launchBrowser, SHARE_TAB_TITLE, type BotBrowser } from './browser';
 import { captureFailure } from './debugCapture';
 import { BotError, toBotError, type BotErrorCode, type ParsedMeetingLink } from './errors';
 import { joinMeeting } from './joinMeeting';
@@ -714,7 +714,26 @@ export class MeetBotSession extends EventEmitter {
       // title, and cannot select a tab that is not there yet.
       this.codePage = await this.browser.context.newPage();
       await this.codePage.goto(`${this.codingUrl}/live`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
-      await this.codePage.waitForTimeout(2_000);
+
+      // And it has to be *named* before the picker opens, which is the part
+      // that used to be assumed. The picker is steered entirely by a
+      // command-line title match; if nothing matches, Chromium does not give
+      // up, it shares whatever it finds first. That was usually the meeting
+      // itself, so the call was shared back into the call and filled with
+      // feedback — the echo after the coding round.
+      //
+      // The page sets its title from JavaScript after hydrating, so a fixed
+      // wait is a guess. Waiting for the actual title turns a race into a
+      // decision: either the tab the picker will match exists, or we do not
+      // open the picker at all.
+      if (!(await this.codePageIsNamed())) {
+        console.warn(
+          `[meet-bot ${this.interviewId}] the code tab never took the title Chromium matches on; not sharing, because the picker would have chosen the meeting`,
+        );
+        await this.codePage.close().catch(() => {});
+        this.codePage = null;
+        return;
+      }
 
       // Sharing is driven from the meeting tab, so bring it back to the front.
       await this.browser.page.bringToFront();
@@ -736,6 +755,25 @@ export class MeetBotSession extends EventEmitter {
     } catch (err) {
       console.warn(`[meet-bot ${this.interviewId}] screen sharing failed: ${(err as Error).message}`);
     }
+  }
+
+  /**
+   * Waits for the code tab to carry the exact title Chromium is told to match.
+   *
+   * Exact, not "contains": the flag matches on the whole title, and a page
+   * still showing the framework's default one is precisely the case this
+   * exists to catch.
+   */
+  private async codePageIsNamed(): Promise<boolean> {
+    if (!this.codePage) return false;
+
+    for (let i = 0; i < 20; i++) {
+      const title = await this.codePage.title().catch(() => '');
+      if (title.trim() === SHARE_TAB_TITLE) return true;
+      await this.codePage.waitForTimeout(500);
+    }
+
+    return false;
   }
 
   private async stopPresentingCode(): Promise<void> {

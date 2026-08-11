@@ -74,7 +74,11 @@
       "Bash(perl -pi -e 's/variant=\"error\"/tone=\"danger\"/g; s/variant=\"info\"/tone=\"info\"/g; s/\\\\bdestructive\\\\b/danger/g;' src/components/interviews/CandidateImport.tsx)",
       "Bash(perl -pi -e \"s/^type Tab = 'live' \\\\| 'transcript' \\\\| 'details';/type Tab = 'live' | 'questions' | 'transcript' | 'details';/\" \"src/app/\\(app\\)/ai-interviews/[id]/page.tsx\")",
       "Bash(perl -pi -e \"s/^          await this\\\\.afterGreeting\\\\\\(\\\\\\);$/          await this.afterGreeting\\(text\\);/\" src/services/InterviewStateMachine.ts)",
-      "Bash(perl -0pi -e \"s/  \\\\/\\\\*\\\\* Closing questions answered, capped so the interview cannot run forever\\\\. \\\\*\\\\/\\\\r?\\\\n  private closingAnswers = 0;\\\\r?\\\\n//; s/    this\\\\.closingAnswers\\\\+\\\\+;\\\\r?\\\\n//\" src/services/InterviewStateMachine.ts)"
+      "Bash(perl -0pi -e \"s/  \\\\/\\\\*\\\\* Closing questions answered, capped so the interview cannot run forever\\\\. \\\\*\\\\/\\\\r?\\\\n  private closingAnswers = 0;\\\\r?\\\\n//; s/    this\\\\.closingAnswers\\\\+\\\\+;\\\\r?\\\\n//\" src/services/InterviewStateMachine.ts)",
+      "Bash(sed -n '/chatButton: {/,/},/p' src/services/meetingBot/platforms/googleMeet.ts)",
+      "Bash(sed -n '/presentButton: {/,/},/p' src/services/meetingBot/platforms/googleMeet.ts)",
+      "Bash(perl -0pi -e 's/        await pushPcm\\\\\\(page, carry\\\\.subarray\\\\\\(0, usable\\\\\\)\\\\\\);/        await pushPcm\\(page, carry.subarray\\(0, usable\\), rate\\);/; s/      if \\\\\\(tail > 0\\\\\\) await pushPcm\\\\\\(page, carry\\\\.subarray\\\\\\(0, tail\\\\\\)\\\\\\);/      if \\(tail > 0\\) await pushPcm\\(page, carry.subarray\\(0, tail\\), rate\\);/' src/services/meetingBot/tts.ts)",
+      "Bash(grep -vE \"npm notice|^$\")"
     ]
   }
 }

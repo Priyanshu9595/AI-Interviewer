@@ -45,8 +45,93 @@ export interface TtsDriver {
 /** Deepgram Aura returns raw little-endian 16-bit PCM at whatever rate we ask. */
 const AURA_SAMPLE_RATE = 24_000;
 
+/** Rates Aura will return linear16 at. Anything else is rejected. */
+const AURA_RATES = [8_000, 16_000, 24_000, 32_000, 48_000];
+
+/**
+ * Asking for audio at the rate the page will play it at.
+ *
+ * Speech is streamed in pieces, each becoming its own AudioBuffer, so a
+ * mismatched rate means Chromium resamples every piece separately. That was
+ * measured rather than assumed, on the suspicion that the joins were what made
+ * the voice sound synthetic: against a 440 Hz reference, chunked 24 kHz and a
+ * single unbroken 24 kHz buffer both came out at 0.0008 RMS error. The joins
+ * cost nothing — Chromium carries the resampler across them — and 0.0008 is
+ * around -62 dB, which nobody can hear.
+ *
+ * Matching the rate is kept because it is free and removes the resampler
+ * entirely (0.0000), but it is not why the voice sounds the way it does. What
+ * that turned out to be is in `speakable` below.
+ */
+async function outputSampleRate(page: Page): Promise<number> {
+  const rate = await page
+    .evaluate(() => (window as unknown as MeetBotWindow).__meetBot?.status()?.sampleRate ?? 0)
+    .catch(() => 0);
+
+  return AURA_RATES.includes(rate) ? rate : AURA_SAMPLE_RATE;
+}
+
 /** Aura rejects very long inputs; interview turns are far shorter than this. */
 const MAX_TTS_CHARS = 1_800;
+
+/**
+ * Written English, turned into something worth listening to.
+ *
+ * This is the difference between the interviewer sounding synthetic and
+ * sounding like a person, and none of it is about audio quality. A voice model
+ * reads what it is given: "I am going to be taking your interview, and I will
+ * leave time at the end" is stilted no matter how good the synthesis, because
+ * nobody speaks in expanded forms. The same sentence with contractions lands
+ * as ordinary speech.
+ *
+ * The typography matters too. An em dash is a visual device with no spoken
+ * equivalent, and Aura renders one as a hard stop mid-clause; a comma gives the
+ * short breath that was meant. Curly quotes and ellipses have the same problem.
+ *
+ * Applied at the last possible moment, so the transcript the recruiter reads
+ * keeps its proper punctuation and only the audio is colloquial.
+ */
+export function speakable(text: string): string {
+  return (
+    text
+      // Dashes are pauses when spoken, not punctuation.
+      .replace(/\s*[—–]\s*/g, ', ')
+      .replace(/\.{3,}|…/g, ', ')
+      // Typographic quotes and apostrophes; the contraction rules below need
+      // straight ones to match, and Aura reads the curly forms inconsistently.
+      .replace(/[‘’]/g, "'")
+      .replace(/[“”]/g, '')
+      // Contractions. Ordered longest-first so "I am going to" does not get
+      // half-replaced, and case-insensitive with the capital preserved.
+      // "have" is deliberately absent. English contracts it only when it is an
+      // auxiliary — "you've applied" — and never when it is the main verb, so a
+      // blanket rule produced "we've about fifteen minutes" and "do you've any
+      // questions". Telling the two apart needs the following participle, which
+      // is more grammar than this is worth. Leaving "we have" alone is a shade
+      // formal; the alternative was wrong English read aloud to a candidate.
+      .replace(/\bI am\b/g, "I'm")
+      .replace(/\bI will\b/g, "I'll")
+      .replace(/\bI would\b/g, "I'd")
+      .replace(/\byou are\b/gi, (m) => (m[0] === 'Y' ? "You're" : "you're"))
+      .replace(/\byou will\b/gi, (m) => (m[0] === 'Y' ? "You'll" : "you'll"))
+      .replace(/\bwe are\b/gi, (m) => (m[0] === 'W' ? "We're" : "we're"))
+      .replace(/\bwe will\b/gi, (m) => (m[0] === 'W' ? "We'll" : "we'll"))
+      .replace(/\bthat is\b/gi, (m) => (m[0] === 'T' ? "That's" : "that's"))
+      .replace(/\bthere is\b/gi, (m) => (m[0] === 'T' ? "There's" : "there's"))
+      .replace(/\bit is\b/gi, (m) => (m[0] === 'I' ? "It's" : "it's"))
+      .replace(/\bdo not\b/gi, (m) => (m[0] === 'D' ? "Don't" : "don't"))
+      .replace(/\bdoes not\b/gi, (m) => (m[0] === 'D' ? "Doesn't" : "doesn't"))
+      .replace(/\bdid not\b/gi, (m) => (m[0] === 'D' ? "Didn't" : "didn't"))
+      .replace(/\bcannot\b/gi, (m) => (m[0] === 'C' ? "Can't" : "can't"))
+      .replace(/\bwill not\b/gi, (m) => (m[0] === 'W' ? "Won't" : "won't"))
+      .replace(/\bis not\b/gi, (m) => (m[0] === 'I' ? "Isn't" : "isn't"))
+      .replace(/\bare not\b/gi, (m) => (m[0] === 'A' ? "Aren't" : "aren't"))
+      .replace(/\bhave not\b/gi, (m) => (m[0] === 'H' ? "Haven't" : "haven't"))
+      .replace(/\blet us\b/gi, (m) => (m[0] === 'L' ? "Let's" : "let's"))
+      .replace(/\s{2,}/g, ' ')
+      .trim()
+  );
+}
 
 class DeepgramTts implements TtsDriver {
   readonly name = 'deepgram' as const;
@@ -62,13 +147,15 @@ class DeepgramTts implements TtsDriver {
   }
 
   async speak(page: Page, text: string, opts: SpeakOptions): Promise<void> {
-    const spoken = text.trim().slice(0, MAX_TTS_CHARS);
+    const spoken = speakable(text).slice(0, MAX_TTS_CHARS);
     if (!spoken) return;
+
+    const rate = await outputSampleRate(page);
 
     const params = new URLSearchParams({
       model: env.MEET_BOT_TTS_MODEL,
       encoding: 'linear16',
-      sample_rate: String(AURA_SAMPLE_RATE),
+      sample_rate: String(rate),
       container: 'none',
     });
 
@@ -106,12 +193,12 @@ class DeepgramTts implements TtsDriver {
         const usable = carry.length - (carry.length % 2);
         if (usable < 4_096) continue;
 
-        await pushPcm(page, carry.subarray(0, usable));
+        await pushPcm(page, carry.subarray(0, usable), rate);
         carry = carry.subarray(usable);
       }
 
       const tail = carry.length - (carry.length % 2);
-      if (tail > 0) await pushPcm(page, carry.subarray(0, tail));
+      if (tail > 0) await pushPcm(page, carry.subarray(0, tail), rate);
     } finally {
       reader.cancel().catch(() => {});
     }
@@ -139,7 +226,7 @@ class WebSpeechTts implements TtsDriver {
   }
 
   async speak(page: Page, text: string, opts: SpeakOptions): Promise<void> {
-    const spoken = text.trim();
+    const spoken = speakable(text);
     if (!spoken) return;
 
     const result = await page.evaluate(
@@ -199,10 +286,10 @@ export interface MeetBotWindow {
   };
 }
 
-async function pushPcm(page: Page, pcm: Buffer): Promise<void> {
+async function pushPcm(page: Page, pcm: Buffer, sampleRate: number): Promise<void> {
   await page.evaluate(
     ([base64, rate]) => (window as unknown as MeetBotWindow).__meetBot?.speak(base64 as string, rate as number),
-    [pcm.toString('base64'), AURA_SAMPLE_RATE] as const,
+    [pcm.toString('base64'), sampleRate] as const,
   );
 }
 

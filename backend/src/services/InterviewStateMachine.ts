@@ -43,6 +43,18 @@ const ROUND_ORDER: QuestionCategory[] = ['INTRO', 'HR', 'TECHNICAL', 'SCENARIO',
  */
 const MAX_GREETING_PROMPTS = 4;
 
+/**
+ * The four possible replies to the candidate's "how are you" answer. A
+ * constant rather than inline strings so the localizer can translate them all
+ * before the interview reaches that point.
+ */
+const GREETING_OPENERS = {
+  unwell: 'That is completely normal, and there is no rush at all — we will take it at your pace.',
+  askedBack: 'I am doing well, thank you for asking.',
+  well: 'Glad to hear it.',
+  neutral: 'Thank you.',
+} as const;
+
 /** Strips the filler a transcript arrives wrapped in, so patterns can match. */
 function bare(text: string): string {
   return text
@@ -213,7 +225,10 @@ export class InterviewStateMachine extends EventEmitter {
 
     const session = sc.interviewSession;
     this.candidateName = sc.candidate.name;
-    this.localizer = new LineLocalizer(session.language);
+    this.localizer = new LineLocalizer(session.language, [
+      sc.candidate.name,
+      sc.candidate.name.trim().split(/\s+/)[0] ?? '',
+    ]);
 
     const all = session.questionSet?.questions ?? [];
 
@@ -266,6 +281,21 @@ export class InterviewStateMachine extends EventEmitter {
         sc.resumeText,
       ),
     });
+
+    // Translate the whole scripted skeleton now, while nothing is waiting on
+    // it. By the time each line is spoken it is a cache hit — no per-turn
+    // latency, and no risk of the very first line falling back to English
+    // because its translation happened to hit a provider blip live.
+    this.localizer.warm([
+      this.interviewer.greeting(),
+      this.interviewer.howAreYou(),
+      ...Object.values(GREETING_OPENERS).map((opener) => this.interviewer!.intro(opener)),
+      'Thank you.',
+      'Thank you, that is confirmed.',
+      'Take your time. Would you like me to rephrase the question?',
+      'That covers everything I wanted to ask. Before we finish, do you have any questions for me about the role or the team?',
+      this.interviewer.closing(),
+    ]);
 
     // A hard stop at 1.5x the scheduled duration protects against a candidate
     // who never stops talking and against a stuck client.
@@ -623,12 +653,12 @@ export class InterviewStateMachine extends EventEmitter {
     // Answering the question they asked, before moving on. Sailing past it is
     // the single most robotic thing an interviewer can do.
     const opener = unwell
-      ? 'That is completely normal, and there is no rush at all — we will take it at your pace.'
+      ? GREETING_OPENERS.unwell
       : askedBack
-        ? 'I am doing well, thank you for asking.'
+        ? GREETING_OPENERS.askedBack
         : well
-          ? 'Glad to hear it.'
-          : 'Thank you.';
+          ? GREETING_OPENERS.well
+          : GREETING_OPENERS.neutral;
 
     this.state = 'IDENTITY_VERIFICATION';
     this.emit('state', { state: this.state, round: 'IDENTITY', progress: 0 });

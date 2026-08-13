@@ -141,7 +141,7 @@ export class MeetBotSession extends EventEmitter {
       });
       this.watchForCrash();
 
-      this.localizer = new LineLocalizer(context.language);
+      this.localizer = new LineLocalizer(context.language, [this.candidateName]);
 
       this.audio = new AudioManager(this.browser.page, {
         interviewId: this.interviewId,

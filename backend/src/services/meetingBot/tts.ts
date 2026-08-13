@@ -116,49 +116,72 @@ const dynamicImport = new Function('m', 'return import(m)') as (m: string) => Pr
   };
 }>;
 
-async function synthesiseViaEdge(voice: string, text: string, signal?: AbortSignal): Promise<Buffer> {
+function floatToPcm16(mono: Float32Array, samples: number): Buffer {
+  const pcm = Buffer.alloc(samples * 2);
+  for (let i = 0; i < samples; i++) {
+    const s = Math.max(-1, Math.min(1, mono[i] ?? 0));
+    pcm.writeInt16LE(Math.round(s * 32_767), i * 2);
+  }
+  return pcm;
+}
+
+/**
+ * Synthesises through an Edge neural voice, streaming into the meeting.
+ *
+ * Each MP3 chunk is decoded and pushed as it arrives — the decoder keeps its
+ * own state across chunks, so partial frames at chunk boundaries are handled
+ * for us. This used to buffer the entire utterance before playing a sample,
+ * which added a second or two of dead air to every non-English turn on top of
+ * the model's own thinking time; the candidate now hears the first words while
+ * the rest of the line is still being synthesised, matching how the Aura path
+ * has always behaved.
+ */
+async function streamViaEdge(page: Page, voice: string, text: string, signal?: AbortSignal): Promise<void> {
   const tts = new MsEdgeTTS();
 
   try {
     await tts.setMetadata(voice, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3);
-    const { audioStream } = tts.toStream(text);
-
-    const chunks: Buffer[] = [];
-    await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('Edge TTS timed out')), 30_000);
-      audioStream.on('data', (c: Buffer) => {
-        if (signal?.aborted) {
-          clearTimeout(timer);
-          return reject(new Error('aborted'));
-        }
-        chunks.push(c);
-      });
-      audioStream.on('end', () => {
-        clearTimeout(timer);
-        resolve();
-      });
-      audioStream.on('error', (err: Error) => {
-        clearTimeout(timer);
-        reject(err);
-      });
-    });
-
-    const mp3 = Buffer.concat(chunks);
 
     const { MPEGDecoder } = await dynamicImport('mpg123-decoder');
     const decoder = new MPEGDecoder();
     await decoder.ready;
 
     try {
-      const { channelData, samplesDecoded } = decoder.decode(mp3);
-      const mono = channelData[0] ?? new Float32Array(0);
+      const { audioStream } = tts.toStream(text);
 
-      const pcm = Buffer.alloc(samplesDecoded * 2);
-      for (let i = 0; i < samplesDecoded; i++) {
-        const s = Math.max(-1, Math.min(1, mono[i] ?? 0));
-        pcm.writeInt16LE(Math.round(s * 32_767), i * 2);
-      }
-      return pcm;
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('Edge TTS timed out')), 30_000);
+        // Decode-and-push strictly in arrival order; pushPcm is async and two
+        // chunks racing each other would interleave their samples.
+        let chain: Promise<void> = Promise.resolve();
+
+        audioStream.on('data', (chunk: Buffer) => {
+          if (signal?.aborted) {
+            clearTimeout(timer);
+            return reject(new Error('aborted'));
+          }
+          chain = chain
+            .then(async () => {
+              const { channelData, samplesDecoded } = decoder.decode(chunk);
+              if (!samplesDecoded) return;
+              await pushPcm(page, floatToPcm16(channelData[0] ?? new Float32Array(0), samplesDecoded), EDGE_SAMPLE_RATE);
+            })
+            .catch((err) => {
+              clearTimeout(timer);
+              reject(err);
+            });
+        });
+
+        audioStream.on('end', () => {
+          clearTimeout(timer);
+          void chain.then(resolve, reject);
+        });
+
+        audioStream.on('error', (err: Error) => {
+          clearTimeout(timer);
+          reject(err);
+        });
+      });
     } finally {
       decoder.free();
     }
@@ -247,17 +270,11 @@ class DeepgramTts implements TtsDriver {
     // voice for that locale, decoded to the same PCM the bridge already plays.
     const edgeVoice = EDGE_VOICES[opts.language];
     if (edgeVoice) {
-      let pcm: Buffer;
       try {
-        pcm = await synthesiseViaEdge(edgeVoice, spoken, opts.signal);
+        await streamViaEdge(page, edgeVoice, spoken, opts.signal);
       } catch (err) {
         if (opts.signal?.aborted) return;
         throw new BotError('TTS_UNAVAILABLE', `Edge TTS (${edgeVoice}) failed: ${(err as Error).message}`);
-      }
-
-      for (let offset = 0; offset < pcm.length; offset += 96_000) {
-        if (opts.signal?.aborted) return;
-        await pushPcm(page, pcm.subarray(offset, offset + 96_000), EDGE_SAMPLE_RATE);
       }
 
       await waitUntilSpoken(page, opts.signal);

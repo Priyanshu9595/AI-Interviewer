@@ -7,9 +7,7 @@ import {
   CheckCircle2,
   Code2,
   Download,
-  FileSpreadsheet,
   Mail,
-  Plug,
   ScanFace,
 } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -110,7 +108,6 @@ export default function ReportPage() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<TabId>('overview');
   const [sending, setSending] = useState(false);
-  const [syncing, setSyncing] = useState(false);
   const [updatingRec, setUpdatingRec] = useState(false);
 
   const load = useCallback(async () => {
@@ -186,25 +183,6 @@ export default function ReportPage() {
     }
   };
 
-  const syncToAts = async () => {
-    setSyncing(true);
-    try {
-      const res = await api.post<{ results: Array<{ integration: string; ok: boolean; error: string | null }> }>(
-        `/reports/${report.id}/ats-sync`,
-      );
-      const failed = res.data.results.filter((r) => !r.ok);
-      if (failed.length) {
-        toast.error(`${failed.length} integration(s) failed`, failed.map((f) => f.integration).join(', '));
-      } else {
-        toast.success('Pushed to your ATS', res.data.results.map((r) => r.integration).join(', '));
-      }
-    } catch (err) {
-      toast.error('ATS sync failed', errorMessage(err));
-    } finally {
-      setSyncing(false);
-    }
-  };
-
   const updateRecommendation = async (newRec: string) => {
     if (!report || newRec === report.hiringRecommendation) return;
     setUpdatingRec(true);
@@ -233,14 +211,6 @@ export default function ReportPage() {
             <Button variant="outline" size="sm" onClick={() => download('pdf')}>
               <Download className="h-4 w-4" />
               PDF
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => download('xlsx')}>
-              <FileSpreadsheet className="h-4 w-4" />
-              Excel
-            </Button>
-            <Button variant="outline" size="sm" onClick={syncToAts} loading={syncing}>
-              <Plug className="h-4 w-4" />
-              ATS
             </Button>
             <Button size="sm" onClick={emailFeedback} loading={sending}>
               <Mail className="h-4 w-4" />

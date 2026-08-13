@@ -109,6 +109,8 @@ export class InterviewStateMachine extends EventEmitter {
   private busy = false;
   /** Follow-ups asked on the current question, capped so we always progress. */
   private probesOnCurrent = 0;
+  /** Rephrases/clarifications on the current question. One, then move on. */
+  private repeatsOnCurrent = 0;
   /** Times we have invited a candidate who said "yes" to actually ask. */
   private closingPrompts = 0;
   /** Times we have asked a joined-but-silent candidate to say hello. */
@@ -309,6 +311,7 @@ export class InterviewStateMachine extends EventEmitter {
       'Thank you.',
       'Thank you, that is confirmed.',
       LiveInterviewerService.OWN_WORDS_LINE,
+      'That is alright, let us move on.',
       'Take your time. Would you like me to rephrase the question?',
       'That covers everything I wanted to ask. Before we finish, do you have any questions for me about the role or the team?',
       interviewer.closing(),
@@ -786,12 +789,23 @@ export class InterviewStateMachine extends EventEmitter {
       return;
     }
 
-    const isFollowUp =
-      turn.decision === 'PROBE' || turn.decision === 'REPEAT' || turn.decision === 'CLARIFY';
+    const isProbe = turn.decision === 'PROBE';
+    const isRepeat = turn.decision === 'REPEAT' || turn.decision === 'CLARIFY';
 
-    // Cap follow-ups so a single question cannot consume the whole interview.
-    if (isFollowUp && this.probesOnCurrent < 2) {
-      this.probesOnCurrent++;
+    // A rephrase or clarification gets exactly one go. A candidate who could
+    // not engage with the question the second time either — asked it back
+    // again, asked for it again — is not going to answer it on a third pass,
+    // and dwelling there just burns their remaining questions.
+    if (isRepeat && this.repeatsOnCurrent >= 1) {
+      await this.advance(await this.t('That is alright, let us move on.'));
+      return;
+    }
+
+    // Probes are capped separately, so one question cannot eat the interview.
+    if ((isProbe && this.probesOnCurrent < 2) || isRepeat) {
+      if (isRepeat) this.repeatsOnCurrent++;
+      else this.probesOnCurrent++;
+
       await this.say(turn.spokenResponse, {
         round: String(question.category),
         questionId: question.id,
@@ -810,12 +824,13 @@ export class InterviewStateMachine extends EventEmitter {
     // The candidate answers neither. Only a NEXT response is an acknowledgement
     // — and only that one has been trimmed to a few words — so anything else is
     // dropped for a plain one.
-    await this.advance(isFollowUp ? await this.t('Thank you.') : turn.spokenResponse);
+    await this.advance(isProbe || isRepeat ? await this.t('Thank you.') : turn.spokenResponse);
   }
 
   /** Moves to the next question, optionally prefixed with an acknowledgement. */
   private async advance(acknowledgement?: string) {
     this.probesOnCurrent = 0;
+    this.repeatsOnCurrent = 0;
     this.index++;
 
     // The model's acknowledgements often arrive without a final stop —

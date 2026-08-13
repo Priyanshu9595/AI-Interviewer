@@ -817,13 +817,18 @@ export class InterviewStateMachine extends EventEmitter {
     this.probesOnCurrent = 0;
     this.index++;
 
+    // The model's acknowledgements often arrive without a final stop —
+    // "That's a good start" — and joined straight onto the next question the
+    // voice reads them as one run-on sentence. The danda covers Hindi lines.
+    const trimmed = acknowledgement?.trim();
+    const ack = trimmed ? `${/[.!?…।؟]$/.test(trimmed) ? trimmed : `${trimmed}.`} ` : '';
+
     const next = this.current();
 
     if (!next) {
       this.state = 'CLOSING';
       this.emit('state', { state: this.state, round: 'CLOSING', progress: 100 });
 
-      const ack = acknowledgement ? `${acknowledgement} ` : '';
       await this.say(
         `${ack}${await this.t('That covers everything I wanted to ask. Before we finish, do you have any questions for me about the role or the team?')}`,
         { round: 'CLOSING', expectsAnswer: true },
@@ -855,7 +860,6 @@ export class InterviewStateMachine extends EventEmitter {
         },
       });
 
-      const ack = acknowledgement ? `${acknowledgement} ` : '';
       // The question text is already in the session's language; only the
       // scripted wrapper around it needs translating.
       await this.say(
@@ -865,7 +869,6 @@ export class InterviewStateMachine extends EventEmitter {
       return;
     }
 
-    const ack = acknowledgement ? `${acknowledgement} ` : '';
     await this.say(`${ack}${next.content}`, {
       round: String(next.category),
       questionId: next.id,

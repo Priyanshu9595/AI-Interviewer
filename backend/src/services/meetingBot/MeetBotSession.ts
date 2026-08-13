@@ -5,6 +5,7 @@ import { env } from '../../lib/env';
 import { prisma } from '../../lib/prisma';
 import { EvaluationQueue } from '../EvaluationQueue';
 import { InterviewStateMachine, type InterviewState } from '../InterviewStateMachine';
+import { LineLocalizer } from '../localize';
 import { AudioManager } from './audioManager';
 import { launchBrowser, SHARE_TAB_TITLE, type BotBrowser } from './browser';
 import { captureFailure } from './debugCapture';
@@ -52,6 +53,8 @@ const MAX_SILENCE_PROMPTS = 2;
 export class MeetBotSession extends EventEmitter {
   private browser: BotBrowser | null = null;
   private audio: AudioManager | null = null;
+  /** Speaks the bot's own scripted lines in the session's language. */
+  private localizer = new LineLocalizer('en-US');
   private monitor: MeetingMonitor | null = null;
   private machine: InterviewStateMachine | null = null;
   private driver: PlatformDriver | null = null;
@@ -137,6 +140,8 @@ export class MeetBotSession extends EventEmitter {
         requireSignedInProfile: driver.requiresSignIn,
       });
       this.watchForCrash();
+
+      this.localizer = new LineLocalizer(context.language);
 
       this.audio = new AudioManager(this.browser.page, {
         interviewId: this.interviewId,
@@ -537,7 +542,9 @@ export class MeetBotSession extends EventEmitter {
         greetedEarly = true;
         const minutes = Math.max(1, Math.round((startAt - now) / 60_000));
         await this.say(
-          `Hello ${this.candidateName}, thanks for joining early. I am your interviewer for today. We will begin in about ${minutes} ${minutes === 1 ? 'minute' : 'minutes'} — please stay on the call.`,
+          await this.localizer.t(
+            `Hello ${this.candidateName}, thanks for joining early. I am your interviewer for today. We will begin in about ${minutes} ${minutes === 1 ? 'minute' : 'minutes'} — please stay on the call.`,
+          ),
           { expectsAnswer: false },
         );
       }
@@ -656,7 +663,9 @@ export class MeetBotSession extends EventEmitter {
       // is a poor substitute for a clickable link, but it is not nothing — and
       // it tells them the round has started rather than leaving them waiting.
       await this.say(
-        'I have tried to put a link in the meeting chat. If you cannot see it, please ask the recruiter for your coding exercise link.',
+        await this.localizer.t(
+          'I have tried to put a link in the meeting chat. If you cannot see it, please ask the recruiter for your coding exercise link.',
+        ),
         { expectsAnswer: false },
       );
 

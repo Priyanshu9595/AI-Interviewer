@@ -5,6 +5,7 @@ import { prisma } from '../lib/prisma';
 import { emailService } from '../lib/email/EmailService';
 import { InsightService, analyseAnswer } from './InsightService';
 import { LiveInterviewerService } from './LiveInterviewerService';
+import { LineLocalizer } from './localize';
 import { ResumeProfile, ResumeService } from './ResumeService';
 import { TranscriptService } from './TranscriptService';
 
@@ -105,6 +106,18 @@ export class InterviewStateMachine extends EventEmitter {
   private startedAt: Date | null = null;
   private candidateName = 'Candidate';
   private askedIdentity = false;
+  /**
+   * Translates the scripted lines below into the session's language. The LLM
+   * turns arrive already localised — their system prompt names the language —
+   * but everything written as a string literal here is English, and without
+   * this a Hindi interview greets its candidate in English.
+   */
+  private localizer = new LineLocalizer('en-US');
+
+  /** Shorthand: the scripted line, in the interview's language. */
+  private t(text: string): Promise<string> {
+    return this.localizer.t(text);
+  }
 
   constructor(readonly sessionCandidateId: string) {
     super();
@@ -200,6 +213,7 @@ export class InterviewStateMachine extends EventEmitter {
 
     const session = sc.interviewSession;
     this.candidateName = sc.candidate.name;
+    this.localizer = new LineLocalizer(session.language);
 
     const all = session.questionSet?.questions ?? [];
 
@@ -297,7 +311,7 @@ export class InterviewStateMachine extends EventEmitter {
     this.state = 'GREETING';
     this.emit('state', { state: this.state, round: 'GREETING', progress: 0 });
 
-    const greeting = this.interviewer!.greeting();
+    const greeting = await this.t(this.interviewer!.greeting());
     await this.say(greeting, { round: 'GREETING', expectsAnswer: true });
   }
 
@@ -381,7 +395,7 @@ export class InterviewStateMachine extends EventEmitter {
         return;
       }
       this.closingPrompts++;
-      await this.say('Of course — please go ahead.', { round: 'CLOSING', expectsAnswer: true });
+      await this.say(await this.t('Of course — please go ahead.'), { round: 'CLOSING', expectsAnswer: true });
       return;
     }
 
@@ -440,7 +454,7 @@ export class InterviewStateMachine extends EventEmitter {
     ]);
     this.emit('insight', { type: 'LONG_PAUSE', message: 'Long silence', severity: 0.6 });
 
-    await this.say('Take your time. Would you like me to rephrase the question?', {
+    await this.say(await this.t('Take your time. Would you like me to rephrase the question?'), {
       round: this.current()?.category ?? 'IN_ROUND',
       expectsAnswer: true,
     });
@@ -475,7 +489,9 @@ export class InterviewStateMachine extends EventEmitter {
         },
       ]);
       await this.say(
-        'I have not been able to hear anything from you, so I will stop here rather than carry on by myself. Please check your microphone and contact the recruiting team to rearrange.',
+        await this.t(
+          'I have not been able to hear anything from you, so I will stop here rather than carry on by myself. Please check your microphone and contact the recruiting team to rearrange.',
+        ),
         { round: 'GREETING', expectsAnswer: false },
       );
       await this.finish('abandoned');
@@ -489,7 +505,7 @@ export class InterviewStateMachine extends EventEmitter {
           ? 'I still cannot hear you. Have a look at your microphone — you may be muted — and just say hello when it is working.'
           : 'Take your time. I will wait here until I hear you.';
 
-    await this.say(line, { round: 'GREETING', expectsAnswer: true });
+    await this.say(await this.t(line), { round: 'GREETING', expectsAnswer: true });
   }
 
   async candidateLeft() {
@@ -522,7 +538,7 @@ export class InterviewStateMachine extends EventEmitter {
       // fall off into the closing round through the normal path.
       this.index = Math.max(this.index, this.questions.length - 1);
       this.state = 'IN_ROUND';
-      await this.advance('We are coming up on time, so I will stop there.');
+      await this.advance(await this.t('We are coming up on time, so I will stop there.'));
     } finally {
       this.busy = false;
     }
@@ -542,7 +558,7 @@ export class InterviewStateMachine extends EventEmitter {
         ? 'Thanks, I have got your submission.'
         : 'Thanks, I have noted that down.';
 
-    await this.say(remark, { round: 'CODING', expectsAnswer: false });
+    await this.say(await this.t(remark), { round: 'CODING', expectsAnswer: false });
     await this.advance();
   }
 
@@ -597,7 +613,7 @@ export class InterviewStateMachine extends EventEmitter {
     // They said hello without saying how they are. Ask — once, and reworded,
     // because repeating the question verbatim sounds like a stuck record.
     if (!well && !unwell && !askedBack && this.greetingExchanges < 2) {
-      await this.say(this.interviewer?.howAreYou() ?? 'How are you doing today?', {
+      await this.say(await this.t(this.interviewer?.howAreYou() ?? 'How are you doing today?'), {
         round: 'GREETING',
         expectsAnswer: true,
       });
@@ -619,8 +635,10 @@ export class InterviewStateMachine extends EventEmitter {
 
     this.askedIdentity = true;
     await this.say(
-      this.interviewer?.intro(opener) ??
-        `${opener} Before we start, could you confirm your full name and the role you have applied for?`,
+      await this.t(
+        this.interviewer?.intro(opener) ??
+          `${opener} Before we start, could you confirm your full name and the role you have applied for?`,
+      ),
       { round: 'IDENTITY', expectsAnswer: true },
     );
   }
@@ -648,7 +666,7 @@ export class InterviewStateMachine extends EventEmitter {
     }
 
     this.state = 'IN_ROUND';
-    await this.advance('Thank you, that is confirmed.');
+    await this.advance(await this.t('Thank you, that is confirmed.'));
   }
 
   private async afterAnswer(
@@ -715,7 +733,7 @@ export class InterviewStateMachine extends EventEmitter {
     // The candidate answers neither. Only a NEXT response is an acknowledgement
     // — and only that one has been trimmed to a few words — so anything else is
     // dropped for a plain one.
-    await this.advance(isFollowUp ? 'Thank you.' : turn.spokenResponse);
+    await this.advance(isFollowUp ? await this.t('Thank you.') : turn.spokenResponse);
   }
 
   /** Moves to the next question, optionally prefixed with an acknowledgement. */
@@ -731,7 +749,7 @@ export class InterviewStateMachine extends EventEmitter {
 
       const ack = acknowledgement ? `${acknowledgement} ` : '';
       await this.say(
-        `${ack}That covers everything I wanted to ask. Before we finish, do you have any questions for me about the role or the team?`,
+        `${ack}${await this.t('That covers everything I wanted to ask. Before we finish, do you have any questions for me about the role or the team?')}`,
         { round: 'CLOSING', expectsAnswer: true },
       );
       return;
@@ -762,8 +780,10 @@ export class InterviewStateMachine extends EventEmitter {
       });
 
       const ack = acknowledgement ? `${acknowledgement} ` : '';
+      // The question text is already in the session's language; only the
+      // scripted wrapper around it needs translating.
       await this.say(
-        `${ack}Now for a short coding exercise. I have put the problem on your screen. ${next.content} Take your time, talk me through your thinking if you like, and submit when you are ready.`,
+        `${ack}${await this.t('Now for a short coding exercise. I have put the problem on your screen.')} ${next.content} ${await this.t('Take your time, talk me through your thinking if you like, and submit when you are ready.')}`,
         { round: 'CODING', questionId: next.id, expectsAnswer: false },
       );
       return;
@@ -818,7 +838,7 @@ export class InterviewStateMachine extends EventEmitter {
     const interviewerFinished = reason === 'completed' || reason === 'ended_early';
 
     if (interviewerFinished) {
-      await this.say(this.interviewer?.closing() ?? 'Thank you for your time today. Goodbye.', {
+      await this.say(await this.t(this.interviewer?.closing() ?? 'Thank you for your time today. Goodbye.'), {
         round: 'CLOSING',
         expectsAnswer: false,
       });

@@ -101,6 +101,13 @@ sound device and returns no audio samples, so it only reaches the meeting if
 the host routes its output back in through a virtual audio cable. Setup is in
 [MEETING_BOT.md §7](MEETING_BOT.md).
 
+**Non-English interviews** (Hindi, Telugu, Tamil, Bengali, Marathi, Spanish,
+French, German, Portuguese, Japanese, Mandarin, Arabic) ignore the Aura model:
+Deepgram's voices do not speak those languages, so the bot synthesises those
+sessions through Microsoft Edge's neural voices instead — free, no key, chosen
+automatically per session language. Candidate speech is transcribed by
+Deepgram nova-3, which supports every language the platform offers.
+
 ### What the bot does *not* need
 
 **The `GOOGLE_CLIENT_*`, `ZOOM_*` and `MS_*` variables in §8 have nothing to do

@@ -46,6 +46,8 @@
     "googleapis": "^174.0.0",
     "jsonwebtoken": "^9.0.3",
     "mammoth": "^1.12.0",
+    "mpg123-decoder": "^1.0.3",
+    "msedge-tts": "^2.0.7",
     "multer": "^2.2.0",
     "papaparse": "^5.5.4",
     "pdf-parse": "^2.4.5",

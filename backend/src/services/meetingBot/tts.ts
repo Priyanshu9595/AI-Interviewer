@@ -1,4 +1,5 @@
 import type { Page } from 'playwright';
+import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts';
 import { env } from '../../lib/env';
 import { BotError } from './errors';
 
@@ -75,6 +76,98 @@ async function outputSampleRate(page: Page): Promise<number> {
 const MAX_TTS_CHARS = 1_800;
 
 /**
+ * The interviewer's voice for languages Deepgram Aura cannot speak.
+ *
+ * Aura covers English (plus a handful of European languages under other model
+ * names), and nothing Indic — so a Hindi or Telugu interview needs a different
+ * synthesiser. Microsoft Edge's neural voices cover every language the
+ * interview can be conducted in, cost nothing and need no key; the trade-off is
+ * that it is Edge's own endpoint rather than a contracted API, so English stays
+ * on Aura and only sessions that cannot use Aura take this path.
+ */
+const EDGE_VOICES: Record<string, string> = {
+  'hi-IN': 'hi-IN-SwaraNeural',
+  'te-IN': 'te-IN-ShrutiNeural',
+  'ta-IN': 'ta-IN-PallaviNeural',
+  'bn-IN': 'bn-IN-TanishaaNeural',
+  'mr-IN': 'mr-IN-AarohiNeural',
+  'es-ES': 'es-ES-ElviraNeural',
+  'fr-FR': 'fr-FR-DeniseNeural',
+  'de-DE': 'de-DE-KatjaNeural',
+  'pt-BR': 'pt-BR-FranciscaNeural',
+  'ja-JP': 'ja-JP-NanamiNeural',
+  'zh-CN': 'zh-CN-XiaoxiaoNeural',
+  'ar-SA': 'ar-SA-ZariyahNeural',
+};
+
+/** The Edge endpoint only serves containers; PCM comes from decoding its MP3. */
+const EDGE_SAMPLE_RATE = 24_000;
+
+/**
+ * mpg123-decoder is ESM-only and this codebase compiles to CommonJS, where a
+ * transpiled import() becomes a require() that cannot load it. The indirection
+ * through Function keeps the dynamic import out of the compiler's reach.
+ */
+const dynamicImport = new Function('m', 'return import(m)') as (m: string) => Promise<{
+  MPEGDecoder: new () => {
+    ready: Promise<unknown>;
+    decode(data: Uint8Array): { channelData: Float32Array[]; samplesDecoded: number; sampleRate: number };
+    free(): void;
+  };
+}>;
+
+async function synthesiseViaEdge(voice: string, text: string, signal?: AbortSignal): Promise<Buffer> {
+  const tts = new MsEdgeTTS();
+
+  try {
+    await tts.setMetadata(voice, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3);
+    const { audioStream } = tts.toStream(text);
+
+    const chunks: Buffer[] = [];
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('Edge TTS timed out')), 30_000);
+      audioStream.on('data', (c: Buffer) => {
+        if (signal?.aborted) {
+          clearTimeout(timer);
+          return reject(new Error('aborted'));
+        }
+        chunks.push(c);
+      });
+      audioStream.on('end', () => {
+        clearTimeout(timer);
+        resolve();
+      });
+      audioStream.on('error', (err: Error) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+    });
+
+    const mp3 = Buffer.concat(chunks);
+
+    const { MPEGDecoder } = await dynamicImport('mpg123-decoder');
+    const decoder = new MPEGDecoder();
+    await decoder.ready;
+
+    try {
+      const { channelData, samplesDecoded } = decoder.decode(mp3);
+      const mono = channelData[0] ?? new Float32Array(0);
+
+      const pcm = Buffer.alloc(samplesDecoded * 2);
+      for (let i = 0; i < samplesDecoded; i++) {
+        const s = Math.max(-1, Math.min(1, mono[i] ?? 0));
+        pcm.writeInt16LE(Math.round(s * 32_767), i * 2);
+      }
+      return pcm;
+    } finally {
+      decoder.free();
+    }
+  } finally {
+    tts.close();
+  }
+}
+
+/**
  * Written English, turned into something worth listening to.
  *
  * This is the difference between the interviewer sounding synthetic and
@@ -149,6 +242,27 @@ class DeepgramTts implements TtsDriver {
   async speak(page: Page, text: string, opts: SpeakOptions): Promise<void> {
     const spoken = speakable(text).slice(0, MAX_TTS_CHARS);
     if (!spoken) return;
+
+    // Aura is English-only; other languages go out through an Edge neural
+    // voice for that locale, decoded to the same PCM the bridge already plays.
+    const edgeVoice = EDGE_VOICES[opts.language];
+    if (edgeVoice) {
+      let pcm: Buffer;
+      try {
+        pcm = await synthesiseViaEdge(edgeVoice, spoken, opts.signal);
+      } catch (err) {
+        if (opts.signal?.aborted) return;
+        throw new BotError('TTS_UNAVAILABLE', `Edge TTS (${edgeVoice}) failed: ${(err as Error).message}`);
+      }
+
+      for (let offset = 0; offset < pcm.length; offset += 96_000) {
+        if (opts.signal?.aborted) return;
+        await pushPcm(page, pcm.subarray(offset, offset + 96_000), EDGE_SAMPLE_RATE);
+      }
+
+      await waitUntilSpoken(page, opts.signal);
+      return;
+    }
 
     const rate = await outputSampleRate(page);
 

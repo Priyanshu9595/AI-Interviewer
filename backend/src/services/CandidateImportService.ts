@@ -305,7 +305,7 @@ export class CandidateImportService {
     return undefined;
   }
 
-  /** "Hindi", "English (US)" and "en-us" all land on the locale code. */
+  /** "Hindi", "Telugu", "English (US)" and "en-us" all land on the locale code. */
   static normalizeLanguage(value: string): string | undefined {
     const NAMES: Record<string, string> = {
       enus: 'en-US',
@@ -320,12 +320,33 @@ export class CandidateImportService {
       indianenglish: 'en-IN',
       hiin: 'hi-IN',
       hindi: 'hi-IN',
+      tein: 'te-IN',
+      telugu: 'te-IN',
+      tain: 'ta-IN',
+      tamil: 'ta-IN',
+      bnin: 'bn-IN',
+      bengali: 'bn-IN',
+      bangla: 'bn-IN',
+      mrin: 'mr-IN',
+      marathi: 'mr-IN',
       eses: 'es-ES',
       spanish: 'es-ES',
       espanol: 'es-ES',
       frfr: 'fr-FR',
       french: 'fr-FR',
       francais: 'fr-FR',
+      dede: 'de-DE',
+      german: 'de-DE',
+      deutsch: 'de-DE',
+      ptbr: 'pt-BR',
+      portuguese: 'pt-BR',
+      jajp: 'ja-JP',
+      japanese: 'ja-JP',
+      zhcn: 'zh-CN',
+      chinese: 'zh-CN',
+      mandarin: 'zh-CN',
+      arsa: 'ar-SA',
+      arabic: 'ar-SA',
     };
     const named = NAMES[squash(value)];
     if (named) return named;

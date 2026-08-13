@@ -491,14 +491,23 @@ export default function NewMeetInterviewPage() {
               </Select>
             </Field>
 
-            <Field label="Language">
+            <Field label="Language" hint="The interviewer speaks, listens and evaluates in this language.">
               <Select value={form.language} onChange={(e) => set('language', e.target.value)}>
                 <option value="en-US">English (US)</option>
                 <option value="en-GB">English (UK)</option>
                 <option value="en-IN">English (India)</option>
                 <option value="hi-IN">Hindi</option>
+                <option value="te-IN">Telugu</option>
+                <option value="ta-IN">Tamil</option>
+                <option value="bn-IN">Bengali</option>
+                <option value="mr-IN">Marathi</option>
                 <option value="es-ES">Spanish</option>
                 <option value="fr-FR">French</option>
+                <option value="de-DE">German</option>
+                <option value="pt-BR">Portuguese</option>
+                <option value="ja-JP">Japanese</option>
+                <option value="zh-CN">Mandarin Chinese</option>
+                <option value="ar-SA">Arabic</option>
               </Select>
             </Field>
           </CardBody>

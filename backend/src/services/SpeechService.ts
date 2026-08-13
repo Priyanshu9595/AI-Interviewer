@@ -32,7 +32,9 @@ export interface AudioFormat {
  * A general model hears "Cuban Eddie's" for Kubernetes and "jangle rest" for
  * Angular REST, and in a technical interview those are precisely the words the
  * answer turns on. The skills the recruiter listed are the best available
- * guess at what will be said, and boosting them costs nothing.
+ * guess at what will be said, and prompting them costs nothing. This matters
+ * doubly in Hindi or Telugu interviews, where candidates code-switch and the
+ * technical terms stay English.
  *
  * Capped and length-filtered: Deepgram takes a bounded list, and a one or two
  * character "skill" boosts noise rather than a word.
@@ -43,16 +45,20 @@ function keywordParams(params: URLSearchParams, skills: string[] = []): void {
     .filter((s) => s.length > 2 && s.length <= 40)
     .slice(0, 25);
 
-  // `:2` is the boost weight — enough to be reached for, not enough to be
-  // hallucinated into audio that plainly says something else.
-  for (const term of terms) params.append('keywords', `${term}:2`);
+  // nova-3 replaced weighted `keywords` with keyterm prompting; sending the
+  // old parameter to it is rejected outright.
+  for (const term of terms) params.append('keyterm', term);
 }
 
 /** Deepgram's live transcription endpoint. */
 function socketUrl(language: string, format?: AudioFormat, skills?: string[]): string {
   const params = new URLSearchParams({
-    model: 'nova-2',
-    // Deepgram wants "en", "hi", "es"; our sessions carry locales like "en-IN".
+    // nova-3, because its language list is what decides which languages an
+    // interview can be held in at all: nova-2 never learned Telugu, Tamil,
+    // Bengali or Marathi, and every language this platform offers is on
+    // nova-3's list.
+    model: 'nova-3',
+    // Deepgram wants "en", "hi", "te"; our sessions carry locales like "te-IN".
     language: language.split('-')[0] ?? 'en',
     punctuate: 'true',
     smart_format: 'true',

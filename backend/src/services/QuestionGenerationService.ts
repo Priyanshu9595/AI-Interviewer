@@ -199,6 +199,10 @@ Produce exactly this many questions:
 - coding: ${mix.coding}
 
 RULES
+- These questions are asked mid-conversation by an interviewer who has ALREADY
+  greeted the candidate and introduced herself. Never open a question with a
+  greeting, a self-introduction, or interview preamble ("Hello, my name is...",
+  "today we will...", "welcome"). Each "text" is the question alone.
 - Every technical question must map to a skill named in the job description or the skills list.
 - Calibrate difficulty to "${input.experienceLevel}". Freshers get no system design. Senior candidates get no syntax trivia.
 - No question answerable in a single word. No two questions may test the same thing.

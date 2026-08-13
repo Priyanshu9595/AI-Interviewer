@@ -171,6 +171,11 @@ export class MeetBotSession extends EventEmitter {
       this.wireMonitor();
       this.monitor.start();
 
+      // Non-English sessions: translate the interview's scripted lines now,
+      // during the wait, so the greeting is not translated live at the moment
+      // it must be spoken.
+      void InterviewStateMachine.prewarmScript(this.interviewId).catch(() => {});
+
       await this.waitForCandidate();
       // The wait can close the interview itself when nobody turns up, in which
       // case there is nothing left to start.

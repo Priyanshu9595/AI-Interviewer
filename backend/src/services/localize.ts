@@ -20,6 +20,8 @@ import { languageName } from './personality';
  */
 
 const cache = new Map<string, string>();
+/** Translations currently in flight, so concurrent callers share one call. */
+const pending = new Map<string, Promise<string | null>>();
 
 export class LineLocalizer {
   /** Longest first, so "Priyanshu Raj" is masked before "Priyanshu" can be. */
@@ -72,6 +74,26 @@ export class LineLocalizer {
     const hit = cache.get(key);
     if (hit) return restore(hit);
 
+    // If this exact line is already being translated — the prewarm started it
+    // moments before the interview asked for it live — join that call rather
+    // than racing it with a duplicate.
+    let inFlight = pending.get(key);
+    if (!inFlight) {
+      inFlight = this.translateMasked(key, masked, restorations.map(([token]) => token));
+      pending.set(key, inFlight);
+      void inFlight.finally(() => pending.delete(key));
+    }
+
+    const translated = await inFlight;
+    return translated ? restore(translated) : text;
+  }
+
+  /**
+   * The actual model round-trip. Returns the translated line still carrying
+   * its placeholders (so it can be cached name-independently), or null after
+   * two failed attempts — the caller speaks English rather than nothing.
+   */
+  private async translateMasked(key: string, masked: string, tokens: string[]): Promise<string | null> {
     // Two attempts, because the fallback is an interviewer that suddenly
     // switches to English mid-interview — worth one retry to avoid. The smart
     // model does the translating: each line runs once per language ever (the
@@ -112,11 +134,11 @@ Rules:
         // asking again beats speaking either.
         const suspicious =
           (masked.length > 80 && translated.length < masked.length / 3) ||
-          restorations.some(([token]) => !translated.includes(token));
+          tokens.some((token) => !translated.includes(token));
 
         if (translated && !suspicious) {
           cache.set(key, translated);
-          return restore(translated);
+          return translated;
         }
       } catch (err) {
         console.warn(`[localize] translation attempt ${attempt + 1} failed: ${(err as Error).message}`);
@@ -129,7 +151,7 @@ Rules:
     }
 
     console.warn('[localize] speaking one line in English after two failed translations');
-    return text;
+    return null;
   }
 
   /**

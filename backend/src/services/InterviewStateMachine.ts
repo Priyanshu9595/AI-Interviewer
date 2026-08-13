@@ -285,17 +285,10 @@ export class InterviewStateMachine extends EventEmitter {
     // Translate the whole scripted skeleton now, while nothing is waiting on
     // it. By the time each line is spoken it is a cache hit — no per-turn
     // latency, and no risk of the very first line falling back to English
-    // because its translation happened to hit a provider blip live.
-    this.localizer.warm([
-      this.interviewer.greeting(),
-      this.interviewer.howAreYou(),
-      ...Object.values(GREETING_OPENERS).map((opener) => this.interviewer!.intro(opener)),
-      'Thank you.',
-      'Thank you, that is confirmed.',
-      'Take your time. Would you like me to rephrase the question?',
-      'That covers everything I wanted to ask. Before we finish, do you have any questions for me about the role or the team?',
-      this.interviewer.closing(),
-    ]);
+    // because its translation happened to hit a provider blip live. (The
+    // meeting bot starts this even earlier, from its waiting room — see
+    // prewarmScript — and the shared cache makes this call free then.)
+    this.localizer.warm(InterviewStateMachine.scriptLines(this.interviewer));
 
     // A hard stop at 1.5x the scheduled duration protects against a candidate
     // who never stops talking and against a stuck client.
@@ -305,6 +298,59 @@ export class InterviewStateMachine extends EventEmitter {
     );
 
     return sc;
+  }
+
+  /** Every fixed line the interview can speak, for translating ahead of time. */
+  private static scriptLines(interviewer: LiveInterviewerService): string[] {
+    return [
+      interviewer.greeting(),
+      interviewer.howAreYou(),
+      ...Object.values(GREETING_OPENERS).map((opener) => interviewer.intro(opener)),
+      'Thank you.',
+      'Thank you, that is confirmed.',
+      'Take your time. Would you like me to rephrase the question?',
+      'That covers everything I wanted to ask. Before we finish, do you have any questions for me about the role or the team?',
+      interviewer.closing(),
+    ];
+  }
+
+  /**
+   * Translates an interview's scripted skeleton before the interview exists.
+   *
+   * The meeting bot joins its meeting minutes before the candidate arrives,
+   * but the state machine — and with it the warm-up in load() — is only
+   * created once they have. That left the very first Hindi interview
+   * translating its greeting at the moment it needed to speak it. Called from
+   * the bot's waiting room instead, this does the same warm-up into the same
+   * global cache, so by the time the machine exists its lines are already
+   * there.
+   */
+  static async prewarmScript(sessionCandidateId: string): Promise<void> {
+    const sc = await prisma.sessionCandidate.findUnique({
+      where: { id: sessionCandidateId },
+      include: { candidate: true, interviewSession: true },
+    });
+    if (!sc) return;
+
+    const session = sc.interviewSession;
+    const localizer = new LineLocalizer(session.language, [
+      sc.candidate.name,
+      sc.candidate.name.trim().split(/\s+/)[0] ?? '',
+    ]);
+    if (!localizer.active) return;
+
+    const interviewer = new LiveInterviewerService({
+      candidateName: sc.candidate.name,
+      jobTitle: session.title,
+      experienceLevel: session.experienceLevel,
+      interviewType: session.type,
+      durationMinutes: session.durationMinutes,
+      personality: session.personality,
+      language: session.language,
+      skills: session.skills,
+    });
+
+    localizer.warm(InterviewStateMachine.scriptLines(interviewer));
   }
 
   // -------------------------------------------------------------------------

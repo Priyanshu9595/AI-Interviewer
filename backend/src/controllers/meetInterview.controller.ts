@@ -390,12 +390,26 @@ export const previewCandidateImport = async (req: AuthRequest, res: Response) =>
 };
 
 const bulkSchema = createSchema
-  // The per-candidate fields come from the rows instead.
-  .omit({ candidateName: true, candidateEmail: true, candidateMobile: true, meetLink: true, scheduledAt: true })
+  // The per-candidate fields come from the rows instead. The role fields stay
+  // on the form too, but only as fallbacks: a file where every row carries its
+  // own job title and description books fine with the form's left blank.
+  .omit({
+    candidateName: true,
+    candidateEmail: true,
+    candidateMobile: true,
+    meetLink: true,
+    scheduledAt: true,
+    jobTitle: true,
+    jobDescription: true,
+    requiredSkills: true,
+  })
   .extend({
     /** Applied to any row that did not bring its own. */
     meetLink: z.string().trim().default(''),
     scheduledAt: z.string().trim().default(''),
+    jobTitle: z.string().trim().default(''),
+    jobDescription: z.string().trim().default(''),
+    requiredSkills: z.array(z.string()).default([]),
     candidates: z
       .array(
         z.object({
@@ -405,11 +419,95 @@ const bulkSchema = createSchema
           mobile: z.string().optional(),
           meetLink: z.string().optional(),
           scheduledAt: z.string().optional(),
+          // Per-row overrides of the form, all optional and all as typed in
+          // the spreadsheet; resolveRowOverrides turns them into what
+          // createSchema wants and says which row a bad one is on.
+          jobTitle: z.string().optional(),
+          experienceLevel: z.string().optional(),
+          jobDescription: z.string().optional(),
+          requiredSkills: z.string().optional(),
+          durationMinutes: z.union([z.string(), z.number()]).optional(),
+          type: z.string().optional(),
+          personality: z.string().optional(),
+          language: z.string().optional(),
+          codingEnabled: z.union([z.string(), z.boolean()]).optional(),
         }),
       )
       .min(1, 'Add at least one candidate')
       .max(MAX_IMPORT_ROWS, `Import at most ${MAX_IMPORT_ROWS} candidates at a time`),
   });
+
+/**
+ * One row's booking values: what the row brought where it brought it, the
+ * batch's where it did not.
+ *
+ * Throws a message the recruiter can act on. The enum-ish fields go through
+ * the same normalisers as the import preview, so "behavioural", "45 mins" and
+ * "yes" mean here exactly what the preview said they meant.
+ */
+function resolveRowOverrides(
+  row: z.infer<typeof bulkSchema>['candidates'][number],
+  batch: z.infer<typeof bulkSchema>,
+) {
+  const jobTitle = row.jobTitle?.trim() || batch.jobTitle;
+  if (!jobTitle) throw badRequest('No job title for this candidate, and none was set for the batch.');
+
+  const jobDescription = row.jobDescription?.trim() || batch.jobDescription;
+  if (!jobDescription) throw badRequest('No job description for this candidate, and none was set for the batch.');
+
+  const requiredSkills = row.requiredSkills?.trim()
+    ? CandidateImportService.splitSkills(row.requiredSkills)
+    : batch.requiredSkills;
+  if (!requiredSkills.length) throw badRequest('No required skills for this candidate, and none were set for the batch.');
+
+  const overrides: Record<string, unknown> = { jobTitle, jobDescription, requiredSkills };
+
+  if (row.experienceLevel?.trim()) {
+    overrides.experienceLevel = CandidateImportService.normalizeExperienceLevel(row.experienceLevel);
+  }
+
+  if (row.type?.trim()) {
+    const type = CandidateImportService.normalizeType(row.type);
+    if (!type) throw badRequest(`"${row.type}" is not an interview type. Use Technical, Behavioural or Mixed.`);
+    overrides.type = type;
+  }
+
+  if (row.personality?.trim()) {
+    const personality = CandidateImportService.normalizePersonality(row.personality);
+    if (!personality) {
+      throw badRequest(`"${row.personality}" is not a personality. Use Friendly, Neutral, Formal or Challenging.`);
+    }
+    overrides.personality = personality;
+  }
+
+  if (row.language?.trim()) {
+    const language = CandidateImportService.normalizeLanguage(row.language);
+    if (!language) {
+      throw badRequest(`"${row.language}" is not a language the interviewer knows. Use a name like Hindi or a code like en-US.`);
+    }
+    overrides.language = language;
+  }
+
+  if (row.durationMinutes !== undefined && String(row.durationMinutes).trim()) {
+    const mins = CandidateImportService.parseDurationMinutes(String(row.durationMinutes));
+    if (mins === undefined) {
+      throw badRequest(`"${row.durationMinutes}" is not an interview duration. Use a number of minutes from 10 to 180.`);
+    }
+    overrides.durationMinutes = mins;
+  }
+
+  if (typeof row.codingEnabled === 'boolean') {
+    overrides.codingEnabled = row.codingEnabled;
+  } else if (row.codingEnabled?.trim()) {
+    const coding = CandidateImportService.parseYesNo(row.codingEnabled);
+    if (coding === undefined) {
+      throw badRequest(`"${row.codingEnabled}" does not answer whether to include a coding round. Use yes or no.`);
+    }
+    overrides.codingEnabled = coding;
+  }
+
+  return overrides;
+}
 
 /**
  * Books every row, reporting each one's fate separately.
@@ -442,6 +540,7 @@ export const bulkCreateMeetInterviews = async (req: AuthRequest, res: Response) 
 
       const parsed = createSchema.parse({
         ...data,
+        ...resolveRowOverrides(row, data),
         candidateName: row.name,
         candidateEmail: row.email,
         candidateMobile: row.mobile,

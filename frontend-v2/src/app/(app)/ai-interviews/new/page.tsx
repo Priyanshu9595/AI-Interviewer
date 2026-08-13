@@ -114,17 +114,30 @@ export default function NewMeetInterviewPage() {
       if (importRows.length === 0) list.push('Upload a file with at least one candidate.');
       const bad = importRows.filter((r) => Object.keys(r.errors).length > 0).length;
       if (bad) list.push(`${bad} row${bad === 1 ? '' : 's'} still need fixing.`);
-      // A row that brought neither is only bookable if the batch supplies one.
+      // The form's values are fallbacks in bulk: a row that brought its own is
+      // fine on its own, and a row that did not is only bookable if the form
+      // supplies what it is missing.
       const orphaned = importRows.filter((r) => !r.meetLink?.trim() && !form.meetLink.trim()).length;
       if (orphaned) list.push(`${orphaned} row(s) have no meeting link, and none is set below.`);
+      const noTitle = importRows.filter((r) => !r.jobTitle?.trim()).length;
+      if (noTitle && form.jobTitle.trim().length < 2) {
+        list.push(`${noTitle} row(s) have no job title, and none is set below.`);
+      }
+      const noJd = importRows.filter((r) => !r.jobDescription?.trim()).length;
+      if (noJd && jdLength < 30) {
+        list.push(`${noJd} row(s) have no job description, and the one below is under 30 characters.`);
+      }
+      const noSkills = importRows.filter((r) => !r.requiredSkills?.trim()).length;
+      if (noSkills && form.requiredSkills.length === 0) {
+        list.push(`${noSkills} row(s) have no required skills, and none are set below.`);
+      }
     } else {
       if (form.candidateName.trim().length < 2) list.push('Enter the candidate’s name.');
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.candidateEmail.trim())) list.push('Enter a valid candidate email.');
+      if (form.jobTitle.trim().length < 2) list.push('Enter the job title.');
+      if (jdLength < 30) list.push(`The job description needs at least 30 characters (currently ${jdLength}).`);
+      if (form.requiredSkills.length === 0) list.push('Add at least one required skill.');
     }
-
-    if (form.jobTitle.trim().length < 2) list.push('Enter the job title.');
-    if (jdLength < 30) list.push(`The job description needs at least 30 characters (currently ${jdLength}).`);
-    if (form.requiredSkills.length === 0) list.push('Add at least one required skill.');
 
     // In bulk the batch link is a fallback, so an empty one is fine — rows may
     // each carry their own. A bad one is never fine.
@@ -165,14 +178,9 @@ export default function NewMeetInterviewPage() {
           {
             ...form,
             scheduledAt,
-            candidates: importRows.map((r) => ({
-              row: r.row,
-              name: r.name,
-              email: r.email,
-              mobile: r.mobile,
-              meetLink: r.meetLink,
-              scheduledAt: r.scheduledAt,
-            })),
+            // A row is its import fields plus any per-row overrides the file
+            // carried; only the client-side error map stays behind.
+            candidates: importRows.map(({ errors: _errors, ...r }) => r),
           },
         );
 
@@ -219,7 +227,7 @@ export default function NewMeetInterviewPage() {
               <CardTitle>{bulk ? 'Candidates' : 'Candidate'}</CardTitle>
               <CardDescription>
                 {bulk
-                  ? 'One interview is booked per row. Everything below is shared by all of them.'
+                  ? 'One interview is booked per row. The file can carry its own job title, description, skills, timings and interviewer settings per row — anything it leaves blank uses the form below.'
                   : 'Who is being interviewed, and where they are told to go.'}
               </CardDescription>
             </div>
@@ -290,12 +298,16 @@ export default function NewMeetInterviewPage() {
           <CardHeader>
             <div>
               <CardTitle>Role</CardTitle>
-              <CardDescription>The questions are generated from this, so specifics pay off.</CardDescription>
+              <CardDescription>
+                {bulk
+                  ? 'Used for rows whose file did not bring its own job title, description or skills. Leave blank if every row has them.'
+                  : 'The questions are generated from this, so specifics pay off.'}
+              </CardDescription>
             </div>
           </CardHeader>
           <CardBody className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Job title" required>
+              <Field label="Job title" required={!bulk}>
                 <Input
                   value={form.jobTitle}
                   onChange={(e) => set('jobTitle', e.target.value)}
@@ -316,7 +328,7 @@ export default function NewMeetInterviewPage() {
 
             <Field
               label="Job description"
-              required
+              required={!bulk}
               hint={`${jdLength} characters — at least 30 needed for useful questions.`}
             >
               <Textarea
@@ -327,7 +339,7 @@ export default function NewMeetInterviewPage() {
               />
             </Field>
 
-            <Field label="Required skills" required hint="Press Enter to add. Comma-separated lists work too.">
+            <Field label="Required skills" required={!bulk} hint="Press Enter to add. Comma-separated lists work too.">
               <div className="space-y-2">
                 <div className="flex gap-2">
                   <Input

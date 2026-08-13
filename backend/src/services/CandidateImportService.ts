@@ -23,6 +23,23 @@ export interface ImportedRow {
   mobile?: string;
   meetLink?: string;
   scheduledAt?: string;
+  /**
+   * Per-row overrides for what is otherwise set once on the booking form. All
+   * optional: a blank cell means "use the form's value", so a file that only
+   * lists names and emails still works exactly as before. Kept as the strings
+   * the recruiter typed (skills stay comma-separated, duration stays text) so
+   * the preview table can show and edit them as-is; they are normalised at
+   * booking time.
+   */
+  jobTitle?: string;
+  experienceLevel?: string;
+  jobDescription?: string;
+  requiredSkills?: string;
+  durationMinutes?: string;
+  type?: string;
+  personality?: string;
+  language?: string;
+  codingEnabled?: string;
   /** Field name -> what is wrong with it. Empty when the row is usable. */
   errors: Record<string, string>;
 }
@@ -58,6 +75,15 @@ const COLUMN_ALIASES: Record<keyof Omit<ImportedRow, 'row' | 'errors'>, string[]
     'interviewdate',
     'date',
   ],
+  jobTitle: ['jobtitle', 'jobrole', 'position', 'designation', 'role', 'title'],
+  experienceLevel: ['experiencelevel', 'experience', 'seniority', 'level'],
+  jobDescription: ['jobdescription', 'roledescription', 'description', 'jd'],
+  requiredSkills: ['requiredskills', 'skillset', 'keyskills', 'skills', 'technologies'],
+  durationMinutes: ['interviewduration', 'durationminutes', 'duration'],
+  type: ['interviewtype', 'roundtype', 'type'],
+  personality: ['interviewerpersonality', 'personality', 'tone'],
+  language: ['interviewlanguage', 'language'],
+  codingEnabled: ['codinground', 'codingenabled', 'codingexercise', 'includecoding', 'coding'],
 };
 
 /** A second date column, merged with the first when the file splits them. */
@@ -126,6 +152,15 @@ export class CandidateImportService {
           mobile: at('mobile'),
           meetLink: at('meetLink'),
           scheduledAt: this.joinDateAndTime(datePart, timePart),
+          jobTitle: at('jobTitle'),
+          experienceLevel: at('experienceLevel'),
+          jobDescription: at('jobDescription'),
+          requiredSkills: at('requiredSkills'),
+          durationMinutes: at('durationMinutes'),
+          type: at('type'),
+          personality: at('personality'),
+          language: at('language'),
+          codingEnabled: at('codingEnabled'),
         }),
       );
     });
@@ -166,6 +201,66 @@ export class CandidateImportService {
       else isoDate = parsed;
     }
 
+    // The per-row overrides. All optional — a blank cell inherits from the
+    // form — so each is only checked when the recruiter actually filled it in.
+    // Recognised values are rewritten to their canonical form so the preview
+    // shows what will actually be booked; unrecognised ones are kept as typed,
+    // with the error printed underneath, so the recruiter sees their own text.
+    const jobTitle = input.jobTitle?.trim() || undefined;
+    if (jobTitle && jobTitle.length < 2) errors.jobTitle = 'Enter the job title';
+
+    const jobDescription = input.jobDescription?.trim() || undefined;
+    if (jobDescription && jobDescription.length < 30) {
+      errors.jobDescription = 'Needs at least 30 characters to generate useful questions';
+    }
+
+    const requiredSkills = input.requiredSkills?.trim() || undefined;
+
+    const experienceLevel = input.experienceLevel?.trim()
+      ? this.normalizeExperienceLevel(input.experienceLevel)
+      : undefined;
+
+    // Recognised enum values are shown in the preview by their form labels
+    // ("Behavioural", not "HR") — they normalise back at booking time.
+    let type = input.type?.trim() || undefined;
+    if (type) {
+      const canonical = this.normalizeType(type);
+      if (!canonical) errors.type = 'Use Technical, Behavioural or Mixed';
+      else type = { TECHNICAL: 'Technical', HR: 'Behavioural', MIXED: 'Mixed' }[canonical];
+    }
+
+    let personality = input.personality?.trim() || undefined;
+    if (personality) {
+      const canonical = this.normalizePersonality(personality);
+      if (!canonical) errors.personality = 'Use Friendly, Neutral, Formal or Challenging';
+      else {
+        personality = { FRIENDLY: 'Friendly', NEUTRAL: 'Neutral', FORMAL: 'Formal', CHALLENGING: 'Challenging' }[
+          canonical
+        ];
+      }
+    }
+
+    let language = input.language?.trim() || undefined;
+    if (language) {
+      const canonical = this.normalizeLanguage(language);
+      if (!canonical) errors.language = 'Use a language like English (US), Hindi, or a code like en-US';
+      else language = canonical;
+    }
+
+    let durationMinutes = input.durationMinutes?.trim() || undefined;
+    if (durationMinutes) {
+      const mins = this.parseDurationMinutes(durationMinutes);
+      if (mins === undefined) errors.durationMinutes = 'Use a number of minutes from 10 to 180';
+      else durationMinutes = String(mins);
+    }
+
+    let codingEnabled = input.codingEnabled?.trim() || undefined;
+    if (codingEnabled) {
+      const parsed = this.parseYesNo(codingEnabled);
+      if (parsed === undefined) errors.codingEnabled = 'Use yes or no';
+      else codingEnabled = parsed ? 'Yes' : 'No';
+    }
+
     return {
       row: input.row,
       name,
@@ -173,13 +268,138 @@ export class CandidateImportService {
       mobile: mobile.success ? mobile.data : input.mobile?.trim(),
       meetLink: meetLink || undefined,
       scheduledAt: isoDate ?? (scheduledAt || undefined),
+      jobTitle,
+      experienceLevel,
+      jobDescription,
+      requiredSkills,
+      durationMinutes,
+      type,
+      personality,
+      language,
+      codingEnabled,
       errors,
     };
   }
 
-  /** The headings the template ships with, and what the parser prefers to see. */
+  // -------------------------------------------------------------------------
+  // Normalising what recruiters actually type
+  //
+  // Shared with the booking endpoint, so a value that passed the preview and a
+  // value typed straight into the preview table are judged by the same rules.
+  // -------------------------------------------------------------------------
+
+  static normalizeType(value: string): 'TECHNICAL' | 'HR' | 'MIXED' | undefined {
+    const s = squash(value);
+    if (['technical', 'tech'].includes(s)) return 'TECHNICAL';
+    if (['hr', 'behavioural', 'behavioral', 'behaviour', 'behavior'].includes(s)) return 'HR';
+    if (['mixed', 'both', 'general'].includes(s)) return 'MIXED';
+    return undefined;
+  }
+
+  static normalizePersonality(value: string): 'FRIENDLY' | 'NEUTRAL' | 'FORMAL' | 'CHALLENGING' | undefined {
+    const s = squash(value);
+    if (['friendly', 'warm', 'casual'].includes(s)) return 'FRIENDLY';
+    if (['neutral', 'balanced'].includes(s)) return 'NEUTRAL';
+    if (['formal', 'professional'].includes(s)) return 'FORMAL';
+    if (['challenging', 'tough', 'strict'].includes(s)) return 'CHALLENGING';
+    return undefined;
+  }
+
+  /** "Hindi", "English (US)" and "en-us" all land on the locale code. */
+  static normalizeLanguage(value: string): string | undefined {
+    const NAMES: Record<string, string> = {
+      enus: 'en-US',
+      english: 'en-US',
+      englishus: 'en-US',
+      americanenglish: 'en-US',
+      engb: 'en-GB',
+      englishuk: 'en-GB',
+      britishenglish: 'en-GB',
+      enin: 'en-IN',
+      englishindia: 'en-IN',
+      indianenglish: 'en-IN',
+      hiin: 'hi-IN',
+      hindi: 'hi-IN',
+      eses: 'es-ES',
+      spanish: 'es-ES',
+      espanol: 'es-ES',
+      frfr: 'fr-FR',
+      french: 'fr-FR',
+      francais: 'fr-FR',
+    };
+    const named = NAMES[squash(value)];
+    if (named) return named;
+
+    // Any well-formed locale code passes through, so a language this map has
+    // not heard of is not blocked — the interviewer speaks what the LLM and
+    // TTS between them support, not what this list knows.
+    const code = value.trim().match(/^([a-z]{2})[-_]([a-z]{2})$/i);
+    return code ? `${code[1]!.toLowerCase()}-${code[2]!.toUpperCase()}` : undefined;
+  }
+
+  /**
+   * Best effort, never fails: the canonical labels exist so the question
+   * generator gets a level it recognises, but experience is stored as free
+   * text, so "8 years in fintech" is kept rather than rejected.
+   */
+  static normalizeExperienceLevel(value: string): string {
+    const s = squash(value);
+    if (/fresher|intern|graduate|entry|01year/.test(s)) return 'Fresher (0-1 years)';
+    if (/junior|13year/.test(s)) return 'Junior (1-3 years)';
+    if (/mid|35year/.test(s)) return 'Mid-level (3-5 years)';
+    if (/senior|58year/.test(s)) return 'Senior (5-8 years)';
+    if (/lead|principal|staff|8year|8plus/.test(s)) return 'Lead (8+ years)';
+    return value.trim();
+  }
+
+  /** "30", "30 mins" and "30 minutes" are all 30. Range-checked like the form. */
+  static parseDurationMinutes(value: string): number | undefined {
+    const digits = String(value).match(/\d+/);
+    if (!digits) return undefined;
+    const mins = Number(digits[0]);
+    return mins >= 10 && mins <= 180 ? mins : undefined;
+  }
+
+  static parseYesNo(value: string): boolean | undefined {
+    const s = squash(String(value));
+    if (['yes', 'y', 'true', '1', 'enabled', 'include', 'included', 'on'].includes(s)) return true;
+    if (['no', 'n', 'false', '0', 'none', 'disabled', 'off'].includes(s)) return false;
+    return undefined;
+  }
+
+  /** One cell, many skills. Semicolons and pipes too — commas split CSV cells in some exports. */
+  static splitSkills(value: string): string[] {
+    return value
+      .split(/[,;|]/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+
+  /**
+   * The headings the template ships with, and what the parser prefers to see.
+   *
+   * Only the first three are about the candidate. Everything after is a
+   * per-row override of the booking form — a recruiter hiring for one role
+   * deletes those columns and sets the role once on the form, a recruiter
+   * booking a mixed batch fills them in per row.
+   */
   static templateHeader(): string[] {
-    return ['Candidate Name', 'Mobile Number', 'Email Address', 'Meeting Link', 'Session Date Time'];
+    return [
+      'Candidate Name',
+      'Mobile Number',
+      'Email Address',
+      'Meeting Link',
+      'Session Date Time',
+      'Job Title',
+      'Experience Level',
+      'Job Description',
+      'Required Skills',
+      'Interview Duration',
+      'Interview Type',
+      'Personality',
+      'Language',
+      'Coding Round',
+    ];
   }
 
   static templateCsv(): string {
@@ -189,6 +409,15 @@ export class CandidateImportService {
       'priyanshu@example.com',
       'https://meet.google.com/abc-defg-hij',
       '2026-08-14 15:00',
+      'Frontend Developer',
+      'Mid-level (3-5 years)',
+      'Builds and maintains our React dashboard, owns component quality, and works closely with design and the API team.',
+      'React; TypeScript; Node.js',
+      '30',
+      'Mixed',
+      'Friendly',
+      'English (US)',
+      'No',
     ];
     return Papa.unparse([this.templateHeader(), example]) + '\n';
   }

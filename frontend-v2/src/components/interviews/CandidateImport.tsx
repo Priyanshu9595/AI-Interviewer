@@ -12,8 +12,36 @@ export interface ImportRow {
   mobile?: string;
   meetLink?: string;
   scheduledAt?: string;
+  /** Per-row overrides of the form. Blank means "use the form's value". */
+  jobTitle?: string;
+  experienceLevel?: string;
+  jobDescription?: string;
+  requiredSkills?: string;
+  durationMinutes?: string;
+  type?: string;
+  personality?: string;
+  language?: string;
+  codingEnabled?: string;
   errors: Record<string, string>;
 }
+
+/**
+ * Columns shown only when the file actually used them. A three-column shortlist
+ * gets the compact table it always had; a file that also books each row its own
+ * role gets the full spread. Keyed off values *and* errors, so a column whose
+ * every cell failed validation still appears with its problems.
+ */
+const OVERRIDE_COLUMNS = [
+  { key: 'jobTitle', label: 'Job title' },
+  { key: 'experienceLevel', label: 'Experience' },
+  { key: 'jobDescription', label: 'Job description' },
+  { key: 'requiredSkills', label: 'Skills' },
+  { key: 'durationMinutes', label: 'Minutes' },
+  { key: 'type', label: 'Type' },
+  { key: 'personality', label: 'Personality' },
+  { key: 'language', label: 'Language' },
+  { key: 'codingEnabled', label: 'Coding' },
+] as const;
 
 interface PreviewResponse {
   rows: ImportRow[];
@@ -104,6 +132,10 @@ export function CandidateImport({ rows, onChange, fallbackMeetLink, fallbackSche
 
   const badRows = rows.filter((r) => Object.keys(r.errors).length > 0).length;
 
+  const overrideColumns = OVERRIDE_COLUMNS.filter(({ key }) =>
+    rows.some((r) => (r[key] ?? '').trim() !== '' || r.errors[key]),
+  );
+
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -138,13 +170,14 @@ export function CandidateImport({ rows, onChange, fallbackMeetLink, fallbackSche
           <FileSpreadsheet className="mx-auto h-8 w-8 text-muted-foreground" />
           <p className="mt-2 text-sm font-medium text-foreground">No candidates yet</p>
           <p className="mt-1 text-sm text-muted-foreground">
-            Upload a file with a name and an email column. A meeting link and a date and time can be included per
-            candidate — anything left blank uses the ones set below.
+            Upload a file with a name and an email column. Everything else — meeting link, date and time, job title,
+            description, skills, duration, interview type, personality, language, coding round — can also be a column,
+            per candidate. Anything left blank uses what is set in the form below.
           </p>
         </div>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-border">
-          <table className="w-full min-w-[900px] text-sm">
+          <table className="w-full text-sm" style={{ minWidth: 900 + overrideColumns.length * 150 }}>
             <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
                 <th className="px-2 py-2 font-medium">Row</th>
@@ -153,6 +186,11 @@ export function CandidateImport({ rows, onChange, fallbackMeetLink, fallbackSche
                 <th className="px-2 py-2 font-medium">Mobile</th>
                 <th className="px-2 py-2 font-medium">Meeting link</th>
                 <th className="px-2 py-2 font-medium">Date and time</th>
+                {overrideColumns.map(({ key, label }) => (
+                  <th key={key} className="px-2 py-2 font-medium">
+                    {label}
+                  </th>
+                ))}
                 <th className="px-2 py-2" />
               </tr>
             </thead>
@@ -176,6 +214,15 @@ export function CandidateImport({ rows, onChange, fallbackMeetLink, fallbackSche
                     placeholder={fallbackScheduledAt ? 'Uses the time below' : 'Required'}
                     onChange={(v) => edit(i, 'scheduledAt', v ? new Date(v).toISOString() : '')}
                   />
+                  {overrideColumns.map(({ key }) => (
+                    <Cell
+                      key={key}
+                      value={r[key] ?? ''}
+                      error={r.errors[key]}
+                      placeholder="Uses the form"
+                      onChange={(v) => edit(i, key, v)}
+                    />
+                  ))}
                   <td className="px-2 py-2">
                     <button
                       type="button"

@@ -308,6 +308,7 @@ export class InterviewStateMachine extends EventEmitter {
       ...Object.values(GREETING_OPENERS).map((opener) => interviewer.intro(opener)),
       'Thank you.',
       'Thank you, that is confirmed.',
+      LiveInterviewerService.OWN_WORDS_LINE,
       'Take your time. Would you like me to rephrase the question?',
       'That covers everything I wanted to ask. Before we finish, do you have any questions for me about the role or the team?',
       interviewer.closing(),

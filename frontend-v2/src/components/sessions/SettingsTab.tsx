@@ -34,7 +34,6 @@ export interface SessionDetail {
   language: string;
   codingEnabled: boolean;
   videoAnalysisEnabled: boolean;
-  recordingEnabled: boolean;
   passMark: number;
 }
 
@@ -51,7 +50,6 @@ export function SettingsTab({ session, onChanged }: { session: SessionDetail; on
     personality: session.personality,
     codingEnabled: session.codingEnabled,
     videoAnalysisEnabled: session.videoAnalysisEnabled,
-    recordingEnabled: session.recordingEnabled,
   });
 
   const set = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) =>
@@ -165,12 +163,6 @@ export function SettingsTab({ session, onChanged }: { session: SessionDetail; on
                 description="Aggregate on-camera metrics only. No imagery leaves the candidate's device."
                 checked={form.videoAnalysisEnabled}
                 onChange={(e) => set('videoAnalysisEnabled', e.target.checked)}
-              />
-              <Checkbox
-                label="Record the session"
-                description="Store the recording for later review."
-                checked={form.recordingEnabled}
-                onChange={(e) => set('recordingEnabled', e.target.checked)}
               />
             </div>
 

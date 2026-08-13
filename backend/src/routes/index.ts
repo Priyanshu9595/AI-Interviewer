@@ -1,7 +1,5 @@
 import { Router } from 'express';
 import multer from 'multer';
-import path from 'path';
-import fs from 'fs';
 import { requireAuth } from '../lib/auth';
 import { asyncHandler } from '../lib/http';
 
@@ -16,28 +14,9 @@ import * as ats from '../controllers/ats.controller';
 
 const router = Router();
 
-const UPLOAD_DIR = path.resolve(__dirname, '../../uploads');
-fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-
 const sheetUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
-});
-
-// Buffered in memory so the same bytes can go to Cloudinary or to disk without
-// a temp file dance. Capped well below the process memory budget.
-const recordingUpload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 200 * 1024 * 1024 },
-  fileFilter: (_req, file, cb) => {
-    cb(null, file.mimetype.startsWith('video/') || file.mimetype.startsWith('audio/'));
-  },
-});
-
-// Individual media chunks: small, frequent, and not worth a disk round-trip.
-const chunkUpload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 25 * 1024 * 1024 },
 });
 
 const RESUME_TYPES = [
@@ -77,20 +56,8 @@ router.get('/interview/:token/coding', asyncHandler(interview.getCodingChallenge
 router.post('/interview/:token/code/run', asyncHandler(interview.runCode));
 router.post('/interview/:token/code/hint', asyncHandler(interview.getCodingHint));
 router.post('/interview/:token/video-metrics', asyncHandler(interview.postVideoMetrics));
-router.post('/interview/:token/recording', recordingUpload.single('recording'), asyncHandler(interview.uploadRecording));
-// Streamed while the interview runs, so an abandoned tab still leaves a recording.
-router.post(
-  '/interview/:token/recording/chunk',
-  chunkUpload.single('chunk'),
-  asyncHandler(interview.uploadRecordingChunk),
-);
-router.post('/interview/:token/recording/finalise', asyncHandler(interview.finaliseRecording));
 router.get('/interview/:token/resume', asyncHandler(interview.getResumeStatus));
 router.post('/interview/:token/resume', resumeUpload.single('resume'), asyncHandler(interview.uploadResume));
-
-// Recording playback. The signed token in the path is the credential, because a
-// <video> element cannot send an Authorization header.
-router.get('/recordings/:playbackToken', asyncHandler(interview.streamRecording));
 
 // ---------------------------------------------------------------------------
 // Everything below requires a recruiter login
@@ -152,8 +119,6 @@ router.post('/interviews/:id/report/retry', asyncHandler(meetInterview.retryMeet
 router.get('/interviews/:sessionCandidateId/insights', asyncHandler(interview.getLiveInsights));
 router.get('/interviews/:sessionCandidateId/evaluation', asyncHandler(interview.getEvaluationStatus));
 router.post('/interviews/:sessionCandidateId/evaluate', asyncHandler(interview.evaluateInterview));
-router.get('/recordings', asyncHandler(interview.listRecordings));
-router.get('/interviews/:sessionCandidateId/recording', asyncHandler(interview.getRecording));
 router.get('/interviews/:sessionCandidateId/resume', asyncHandler(interview.getCandidateResume));
 router.get('/interviews/:sessionCandidateId/resume/file', asyncHandler(interview.downloadResume));
 router.post(

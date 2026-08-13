@@ -70,11 +70,6 @@ const envSchema = z.object({
   // recognition is used instead.
   DEEPGRAM_API_KEY: z.string().optional(),
 
-  // Cloudinary. Without these, recordings and resumes are stored on local disk.
-  CLOUDINARY_CLOUD_NAME: z.string().optional(),
-  CLOUDINARY_API_KEY: z.string().optional(),
-  CLOUDINARY_API_SECRET: z.string().optional(),
-
   // Code execution sandbox limits.
   CODE_EXEC_TIMEOUT_MS: z.coerce.number().default(5000),
   CODE_EXEC_ENABLED: z

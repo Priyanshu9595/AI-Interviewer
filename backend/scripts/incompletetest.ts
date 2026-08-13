@@ -46,7 +46,6 @@ async function call(path: string, init: RequestInit = {}) {
       scheduledAt: new Date(Date.now() - 5_000).toISOString(),
       durationMinutes: 30,
       codingEnabled: false,
-      recordingEnabled: false,
       videoAnalysisEnabled: false,
       generateQuestions: false,
     }),

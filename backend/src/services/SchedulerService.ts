@@ -3,7 +3,6 @@ import { emailService } from '../lib/email/EmailService';
 import { env } from '../lib/env';
 import { prisma } from '../lib/prisma';
 import { EvaluationQueue } from './EvaluationQueue';
-import { RecordingService } from './RecordingService';
 import { ResumeService } from './ResumeService';
 import { MeetBotManager } from './meetingBot/MeetBotManager';
 
@@ -170,8 +169,6 @@ export class SchedulerService {
       await this.closeFinishedSessions();
       // A completed interview with no report is outstanding work, not a dead end.
       await EvaluationQueue.processPending();
-      // Recordings whose upload failed earlier upload themselves once fixed.
-      await RecordingService.retryQueued();
       // Resumes stored while the LLM was down still need analysing.
       await ResumeService.analysePending();
     } catch (err) {

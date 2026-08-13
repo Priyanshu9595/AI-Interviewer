@@ -4,7 +4,6 @@ import { EvaluationQueue } from '../services/EvaluationQueue';
 import { InterviewStateMachine } from '../services/InterviewStateMachine';
 import { evaluateJoinGate } from '../services/JoinGate';
 import { InsightService } from '../services/InsightService';
-import { RecordingService } from '../services/RecordingService';
 import { SpeechSession, SpeechResult, deepgramConfigured, getSpeechStatus } from '../services/SpeechService';
 
 interface Room {
@@ -330,19 +329,6 @@ function wireMachine(nsp: Nsp, roomId: string, machine: InterviewStateMachine) {
     room?.speech?.stop();
     rooms.delete(roomId);
     machine.dispose();
-
-    // Save whatever was streamed, even when the candidate closed the tab and
-    // will never send a finalise request of its own. Delayed slightly so any
-    // in-flight chunk lands first.
-    setTimeout(() => {
-      void RecordingService.finalise(roomId)
-        .then((r) => {
-          if (!r.stored && r.reason !== 'recording is disabled for this session') {
-            console.log(`[recording] nothing stored for ${roomId}: ${r.reason}`);
-          }
-        })
-        .catch((err) => console.error(`[recording] finalise failed for ${roomId}:`, err.message));
-    }, 4000);
 
     // Only a full interview is scored. A no-show has nothing to evaluate, and
     // an abandoned one cannot be judged fairly against candidates who finished.

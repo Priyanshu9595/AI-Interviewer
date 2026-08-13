@@ -42,7 +42,6 @@ export const getReport = async (req: AuthRequest, res: Response) => {
         include: {
           candidate: true,
           interviewSession: true,
-          recording: { select: { id: true, durationSeconds: true, mimeType: true } },
           submissions: {
             include: { question: { select: { content: true, meta: true } } },
             orderBy: { createdAt: 'asc' },

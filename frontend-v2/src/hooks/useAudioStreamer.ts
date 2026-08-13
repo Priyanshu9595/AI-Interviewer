@@ -64,7 +64,7 @@ export function useAudioStreamer({
       return;
     }
 
-    // Audio only: the video recording uses its own recorder instance.
+    // Only the audio tracks: this stream exists to feed transcription.
     const audioOnly = new MediaStream(stream.getAudioTracks());
     const recorder = new MediaRecorder(audioOnly, { mimeType, audioBitsPerSecond: 32_000 });
 

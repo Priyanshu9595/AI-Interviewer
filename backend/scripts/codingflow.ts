@@ -60,7 +60,6 @@ async function call(path: string, init: RequestInit = {}) {
       durationMinutes: 15,
       codingEnabled: true,
       videoAnalysisEnabled: false,
-      recordingEnabled: false,
       generateQuestions: true,
     }),
   })) as { id: string };

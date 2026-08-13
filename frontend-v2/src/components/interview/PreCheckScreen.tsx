@@ -11,7 +11,6 @@ export interface DeviceChoice {
   audioDeviceId: string;
   videoDeviceId: string;
   cameraEnabled: boolean;
-  screenStream?: MediaStream | null;
 }
 
 interface Props {
@@ -20,7 +19,6 @@ interface Props {
   interviewerName: string;
   durationMinutes: number;
   videoRequired: boolean;
-  recordingEnabled: boolean;
   /** Candidate access token, used for the optional resume upload. */
   token: string;
   onReady: (choice: DeviceChoice) => void;
@@ -32,7 +30,6 @@ export function PreCheckScreen({
   interviewerName,
   durationMinutes,
   videoRequired,
-  recordingEnabled,
   token,
   onReady,
 }: Props) {
@@ -155,18 +152,8 @@ export function PreCheckScreen({
 
   const start = async () => {
     setStarting(true);
-    
-    let screenStream = null;
-    if (recordingEnabled) {
-      try {
-        screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
-      } catch {
-        console.warn('Screen sharing was denied');
-      }
-    }
-
     teardown();
-    onReady({ audioDeviceId: audioId, videoDeviceId: videoId, cameraEnabled, screenStream });
+    onReady({ audioDeviceId: audioId, videoDeviceId: videoId, cameraEnabled });
   };
 
   const micReady = !micError && streamRef.current !== null;

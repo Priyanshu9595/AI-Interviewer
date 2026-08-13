@@ -22,7 +22,6 @@ interface InterviewContext {
     language: string;
     codingEnabled: boolean;
     videoAnalysisEnabled: boolean;
-    recordingEnabled: boolean;
     skills: string[];
   };
   interviewer: { name: string; style: string };
@@ -201,8 +200,7 @@ export default function InterviewPage() {
         sessionTitle={context.session.title}
         interviewerName={context.interviewer.name}
         durationMinutes={context.session.durationMinutes}
-        videoRequired={context.session.videoAnalysisEnabled || context.session.recordingEnabled}
-        recordingEnabled={context.session.recordingEnabled}
+        videoRequired={context.session.videoAnalysisEnabled}
         token={token}
         onReady={setDevices}
       />
@@ -219,7 +217,6 @@ export default function InterviewPage() {
       language={context.session.language}
       durationMinutes={context.session.durationMinutes}
       videoAnalysisEnabled={context.session.videoAnalysisEnabled}
-      recordingEnabled={context.session.recordingEnabled}
       onFinished={() => setFinished(true)}
     />
   );

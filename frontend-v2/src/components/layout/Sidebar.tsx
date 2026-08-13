@@ -13,7 +13,6 @@ import {
   LogOut,
   Menu,
   Users,
-  Video,
   X,
 } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
@@ -25,7 +24,6 @@ const NAV = [
   { href: '/sessions', label: 'Interview sessions', icon: CalendarClock },
   { href: '/candidates', label: 'Candidates', icon: Users },
   { href: '/reports', label: 'Reports', icon: FileText },
-  { href: '/recordings', label: 'Recordings', icon: Video },
   { href: '/analytics', label: 'Analytics', icon: BarChart3 },
 ];
 

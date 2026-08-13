@@ -180,7 +180,8 @@ export default function NewMeetInterviewPage() {
             scheduledAt,
             // A row is its import fields plus any per-row overrides the file
             // carried; only the client-side error map stays behind.
-            candidates: importRows.map(({ errors: _errors, ...r }) => r),
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            candidates: importRows.map(({ errors, ...r }) => r),
           },
         );
 

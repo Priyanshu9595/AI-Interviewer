@@ -7,7 +7,6 @@ import { FAST_MODEL, provider, SMART_MODEL } from './lib/ai';
 import { env } from './lib/env';
 import { errorHandler, notFoundHandler } from './lib/http';
 import { emailSenderStatus, verifyEmailSender } from './lib/email/EmailService';
-import { getCloudinaryStatus, verifyCloudinary } from './lib/storage';
 import { getSpeechStatus, verifySpeech } from './services/SpeechService';
 import { checkDatabase, prisma } from './lib/prisma';
 import { configureInterviewGateway, activeInterviewCount } from './realtime/interviewGateway';
@@ -38,7 +37,6 @@ app.get('/health', async (_req, res) => {
     status: alive ? 'ok' : 'degraded',
     database,
     emailSender: emailSenderStatus(),
-    recordingStorage: getCloudinaryStatus(),
     speechToText: getSpeechStatus(),
     // Which service is answering the model calls, and as what. Reported because
     // "is production on the provider I configured?" is otherwise a question
@@ -80,7 +78,6 @@ httpServer.listen(env.PORT, () => {
   console.log(`Meet bot ws://localhost:${env.PORT}/meet-bot (${env.MEET_BOT_ENABLED ? `voice: ${env.MEET_BOT_TTS}` : 'disabled'})`);
   console.log(`Mode     ${env.NODE_ENV}`);
   void verifyEmailSender();
-  void verifyCloudinary();
   void verifySpeech();
   warnAboutHost();
   warnAboutAppUrl();

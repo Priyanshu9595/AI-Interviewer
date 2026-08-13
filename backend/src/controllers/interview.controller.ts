@@ -1,7 +1,5 @@
 import { Prisma } from '@prisma/client';
 import { Request, Response } from 'express';
-import fs from 'fs/promises';
-import path from 'path';
 import { z } from 'zod';
 import { AuthRequest } from '../lib/auth';
 import { badRequest, forbidden, notFound, param } from '../lib/http';
@@ -13,15 +11,10 @@ import { EvaluationService } from '../services/EvaluationService';
 import { InsightService } from '../services/InsightService';
 import { MeetBotManager } from '../services/meetingBot/MeetBotManager';
 import { TranscriptService } from '../services/TranscriptService';
-import { createReadStream } from 'fs';
-import { env } from '../lib/env';
-import { signPlaybackToken, verifyPlaybackToken } from '../lib/playbackToken';
 import { evaluateJoinGate } from '../services/JoinGate';
-import { RecordingService } from '../services/RecordingService';
 import { ResumeService } from '../services/ResumeService';
 import { VideoAnalysisService } from '../services/VideoAnalysisService';
 import { PERSONALITIES } from '../services/personality';
-import { UPLOAD_DIR, deleteAsset, storeAsset } from '../lib/storage';
 
 /** Resolves the candidate-facing access token to the interview row. */
 async function bySessionToken(token: string) {
@@ -62,7 +55,6 @@ export const getInterviewContext = async (req: Request, res: Response) => {
       language: session.language,
       codingEnabled: session.codingEnabled,
       videoAnalysisEnabled: session.videoAnalysisEnabled,
-      recordingEnabled: session.recordingEnabled,
       skills: session.skills,
     },
     interviewer: { name: persona.name, style: persona.label },
@@ -267,232 +259,6 @@ export const postVideoMetrics = async (req: Request, res: Response) => {
   );
 
   res.json({ recorded });
-};
-
-// ---------------------------------------------------------------------------
-// Recording
-// ---------------------------------------------------------------------------
-
-/**
- * Receives one chunk of the in-progress recording.
- *
- * Called every few seconds while the interview runs so that an abrupt exit
- * cannot lose the whole session. Kept deliberately cheap: append and return.
- */
-export const uploadRecordingChunk = async (req: Request, res: Response) => {
-  const sc = await bySessionToken(param(req, 'token'));
-  if (!sc.interviewSession.recordingEnabled) throw forbidden('Recording is disabled for this interview');
-
-  const file = (req as unknown as { file?: Express.Multer.File }).file;
-  if (!file?.buffer?.length) throw badRequest('Empty chunk');
-
-  const bytes = await RecordingService.appendChunk(sc.id, file.buffer);
-  res.json({ bytes });
-};
-
-/**
- * Assembles the streamed chunks into the stored recording.
- *
- * Also called server-side when an interview ends, so a candidate who closes the
- * tab still gets whatever was captured up to that point.
- */
-export const finaliseRecording = async (req: Request, res: Response) => {
-  const sc = await bySessionToken(param(req, 'token'));
-  const durationSeconds = parseInt(String(req.body?.durationSeconds ?? '0'), 10) || 0;
-
-  const result = await RecordingService.finalise(sc.id, {
-    mimeType: String(req.body?.mimeType ?? 'video/webm'),
-    durationSeconds,
-  });
-
-  res.json(result);
-};
-
-/**
- * Legacy whole-file upload, kept as a fallback for a client that could not
- * stream (for example a browser whose MediaRecorder produced a single blob).
- */
-export const uploadRecording = async (req: Request, res: Response) => {
-  const sc = await bySessionToken(param(req, 'token'));
-  const file = (req as unknown as { file?: Express.Multer.File }).file;
-  if (!file) throw badRequest('No recording was uploaded');
-
-  if (!sc.interviewSession.recordingEnabled) throw forbidden('Recording is disabled for this interview');
-
-  const clientDuration = parseInt(String(req.body?.durationSeconds ?? '0'), 10) || 0;
-
-  // Replacing an existing recording must not orphan the previous asset.
-  const previous = await prisma.recording.findUnique({ where: { sessionCandidateId: sc.id } });
-  if (previous) await deleteAsset(previous);
-
-  const asset = await storeAsset({
-    buffer: file.buffer,
-    fileName: file.originalname || 'interview.webm',
-    folder: 'ai-interview/recordings',
-    publicId: sc.id,
-    resourceType: 'video',
-  });
-
-  const data = {
-    url: asset.url,
-    publicId: asset.publicId,
-    storage: asset.storage,
-    filePath: asset.filePath,
-    mimeType: file.mimetype,
-    sizeBytes: asset.bytes,
-    // Cloudinary probes the real duration; trust it over the client's estimate.
-    durationSeconds: asset.durationSeconds || clientDuration,
-  };
-
-  const recording = await prisma.recording.upsert({
-    where: { sessionCandidateId: sc.id },
-    create: { sessionCandidateId: sc.id, ...data },
-    update: data,
-  });
-
-  // Chunks are now redundant.
-  await RecordingService.discard(sc.id);
-
-  res.status(201).json({
-    id: recording.id,
-    storage: recording.storage,
-    sizeBytes: recording.sizeBytes,
-    durationSeconds: recording.durationSeconds,
-  });
-};
-
-/**
- * Returns a playable URL for a recording, plus its metadata.
- *
- * A `<video>` element cannot attach an Authorization header, so the protected
- * endpoint hands back a URL instead of the bytes: the Cloudinary URL directly,
- * or a short-lived signed route for locally stored files.
- */
-export const getRecording = async (req: AuthRequest, res: Response) => {
-  const sessionCandidateId = param(req, 'sessionCandidateId');
-
-  const recording = await prisma.recording.findFirst({
-    where: {
-      sessionCandidateId,
-      sessionCandidate: { interviewSession: { userId: req.user!.userId } },
-    },
-    include: {
-      sessionCandidate: {
-        select: {
-          completedAt: true,
-          candidate: { select: { name: true } },
-          interviewSession: { select: { title: true } },
-        },
-      },
-    },
-  });
-
-  if (!recording) throw notFound('No recording available for this interview');
-
-  const url =
-    recording.storage === 'CLOUDINARY' && recording.url
-      ? recording.url.replace(/\.webm$/i, '.mp4')
-      : `${env.API_URL}/api/recordings/${signPlaybackToken(recording.id)}`;
-
-  res.json({
-    url,
-    storage: recording.storage,
-    mimeType: recording.mimeType,
-    sizeBytes: recording.sizeBytes,
-    durationSeconds: recording.durationSeconds,
-    recordedAt: recording.createdAt,
-    candidateName: recording.sessionCandidate.candidate.name,
-    sessionTitle: recording.sessionCandidate.interviewSession.title,
-  });
-};
-
-/**
- * Streams a locally stored recording to anyone holding a valid playback token.
- *
- * Deliberately outside the bearer-token middleware: the token in the path is
- * the credential, because media elements cannot send headers. Supports HTTP
- * range requests so the player can seek instead of buffering the whole file.
- */
-export const streamRecording = async (req: Request, res: Response) => {
-  const recordingId = verifyPlaybackToken(param(req, 'playbackToken'));
-  if (!recordingId) throw forbidden('This playback link is invalid or has expired');
-
-  const recording = await prisma.recording.findUnique({ where: { id: recordingId } });
-  if (!recording) throw notFound('Recording not found');
-
-  if (recording.storage === 'CLOUDINARY' && recording.url) return res.redirect(recording.url.replace(/\.webm$/i, '.mp4'));
-  if (!recording.filePath) throw notFound('This recording has no stored file');
-
-  // Reject any path that escapes the uploads directory.
-  const absolute = path.resolve(UPLOAD_DIR, recording.filePath);
-  if (!absolute.startsWith(UPLOAD_DIR)) throw forbidden('Invalid recording path');
-
-  let stat;
-  try {
-    stat = await fs.stat(absolute);
-  } catch {
-    throw notFound('The recording file is missing from disk');
-  }
-
-  res.setHeader('Content-Type', recording.mimeType);
-  res.setHeader('Accept-Ranges', 'bytes');
-
-  const range = req.headers.range;
-
-  if (range) {
-    const match = /bytes=(\d*)-(\d*)/.exec(range);
-    const start = match?.[1] ? parseInt(match[1], 10) : 0;
-    const end = match?.[2] ? parseInt(match[2], 10) : stat.size - 1;
-
-    if (start >= stat.size || end >= stat.size || start > end) {
-      res.setHeader('Content-Range', `bytes */${stat.size}`);
-      return res.status(416).end();
-    }
-
-    res.status(206);
-    res.setHeader('Content-Range', `bytes ${start}-${end}/${stat.size}`);
-    res.setHeader('Content-Length', end - start + 1);
-    return createReadStream(absolute, { start, end }).pipe(res);
-  }
-
-  res.setHeader('Content-Length', stat.size);
-  return createReadStream(absolute).pipe(res);
-};
-
-/** Every recording the recruiter owns, newest first. */
-export const listRecordings = async (req: AuthRequest, res: Response) => {
-  const rows = await prisma.recording.findMany({
-    where: { sessionCandidate: { interviewSession: { userId: req.user!.userId } } },
-    orderBy: { createdAt: 'desc' },
-    take: 100,
-    include: {
-      sessionCandidate: {
-        select: {
-          id: true,
-          status: true,
-          completedAt: true,
-          candidate: { select: { name: true, email: true } },
-          interviewSession: { select: { id: true, title: true } },
-          report: { select: { id: true, overallRating: true, hiringRecommendation: true } },
-        },
-      },
-    },
-  });
-
-  res.json(
-    rows.map((r) => ({
-      id: r.id,
-      sessionCandidateId: r.sessionCandidateId,
-      storage: r.storage,
-      mimeType: r.mimeType,
-      sizeBytes: r.sizeBytes,
-      durationSeconds: r.durationSeconds,
-      recordedAt: r.createdAt,
-      candidate: r.sessionCandidate.candidate,
-      session: r.sessionCandidate.interviewSession,
-      report: r.sessionCandidate.report,
-    })),
-  );
 };
 
 // ---------------------------------------------------------------------------

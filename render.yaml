@@ -86,14 +86,8 @@ services:
         value: "60000"
 
       # Optional. Without these, invitations print to the log instead of being
-      # sent, and recordings and resumes fall back to the container's disk.
+      # sent.
       - key: API_KEY_FOR_EMAIL
         sync: false
       - key: EMAIL_FROM
-        sync: false
-      - key: CLOUDINARY_CLOUD_NAME
-        sync: false
-      - key: CLOUDINARY_API_KEY
-        sync: false
-      - key: CLOUDINARY_API_SECRET
         sync: false

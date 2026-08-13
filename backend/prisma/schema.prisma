@@ -77,7 +77,6 @@ model InterviewSession {
   language             String                 @default("en-US")
   codingEnabled        Boolean                @default(true)
   videoAnalysisEnabled Boolean                @default(true)
-  recordingEnabled     Boolean                @default(true)
   passMark             Int                    @default(6)
 
   createdAt DateTime @default(now())
@@ -173,7 +172,6 @@ model SessionCandidate {
   candidate        Candidate            @relation(fields: [candidateId], references: [id], onDelete: Cascade)
   transcript       InterviewTranscript?
   report           Report?
-  recording        Recording?
   submissions      CodingSubmission[]
   reminders        Reminder[]
   insights         RealtimeInsight[]
@@ -361,31 +359,6 @@ model CodingSubmission {
   question         Question?        @relation(fields: [questionId], references: [id], onDelete: SetNull)
 
   @@index([sessionCandidateId])
-}
-
-// ---------------------------------------------------------------------------
-// Recording
-// ---------------------------------------------------------------------------
-
-model Recording {
-  id                 String   @id @default(uuid())
-  sessionCandidateId String   @unique
-
-  /// Playable URL. Cloudinary when configured, otherwise a local stream route.
-  url      String?
-  /// Cloudinary public id, needed to delete the asset later.
-  publicId String?
-  /// CLOUDINARY | LOCAL — where the bytes actually live.
-  storage  String  @default("LOCAL")
-  /// Relative path under uploads/ for locally stored recordings.
-  filePath String?
-
-  mimeType        String   @default("video/webm")
-  sizeBytes       Int      @default(0)
-  durationSeconds Int      @default(0)
-  createdAt       DateTime @default(now())
-
-  sessionCandidate SessionCandidate @relation(fields: [sessionCandidateId], references: [id], onDelete: Cascade)
 }
 
 // ---------------------------------------------------------------------------

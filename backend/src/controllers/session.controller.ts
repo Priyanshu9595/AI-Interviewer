@@ -25,7 +25,6 @@ const createSchema = z.object({
   language: z.string().default('en-US'),
   codingEnabled: z.boolean().default(true),
   videoAnalysisEnabled: z.boolean().default(true),
-  recordingEnabled: z.boolean().default(true),
   passMark: z.number().int().min(1).max(10).default(6),
   /** Generate the question set immediately rather than on first join. */
   generateQuestions: z.boolean().default(true),
@@ -82,7 +81,6 @@ export const createSession = async (req: AuthRequest, res: Response) => {
       language: data.language,
       codingEnabled: data.codingEnabled,
       videoAnalysisEnabled: data.videoAnalysisEnabled,
-      recordingEnabled: data.recordingEnabled,
       passMark: data.passMark,
     },
   });
@@ -217,7 +215,6 @@ export const updateSession = async (req: AuthRequest, res: Response) => {
   if (data.language !== undefined) patch.language = data.language;
   if (data.codingEnabled !== undefined) patch.codingEnabled = data.codingEnabled;
   if (data.videoAnalysisEnabled !== undefined) patch.videoAnalysisEnabled = data.videoAnalysisEnabled;
-  if (data.recordingEnabled !== undefined) patch.recordingEnabled = data.recordingEnabled;
   if (data.passMark !== undefined) patch.passMark = data.passMark;
   if (data.status !== undefined) patch.status = data.status;
 

@@ -12,7 +12,6 @@ import {
   Trash2,
   Upload,
   Users,
-  Video,
 } from 'lucide-react';
 import { useToast } from '@/components/Toast';
 import {
@@ -29,7 +28,6 @@ import {
   StatusBadge,
   scoreTone,
 } from '@/components/ui';
-import { RecordingPlayer } from '@/components/interview/RecordingPlayer';
 import { EvaluationStatus } from '@/components/sessions/EvaluationStatus';
 import { ResumePanel } from '@/components/sessions/ResumePanel';
 import { api, errorMessage } from '@/lib/api';
@@ -72,7 +70,6 @@ export function CandidatesTab({
   const [addOpen, setAddOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [resumeFor, setResumeFor] = useState<SessionCandidate | null>(null);
-  const [recordingFor, setRecordingFor] = useState<SessionCandidate | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [bulkResult, setBulkResult] = useState<BulkResult | null>(null);
@@ -262,16 +259,6 @@ export function CandidatesTab({
                       </Button>
                     </Link>
                   )}
-                  {row.joinedAt && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setRecordingFor(row)}
-                      title="Watch the interview recording"
-                    >
-                      <Video className="h-4 w-4" />
-                    </Button>
-                  )}
                   <Button
                     variant="ghost"
                     size="icon"
@@ -295,15 +282,6 @@ export function CandidatesTab({
           </ul>
         )}
       </Card>
-
-      <Modal
-        open={Boolean(recordingFor)}
-        onClose={() => setRecordingFor(null)}
-        title={recordingFor ? `${recordingFor.candidate.name} — interview recording` : ''}
-        size="lg"
-      >
-        {recordingFor && <RecordingPlayer sessionCandidateId={recordingFor.id} />}
-      </Modal>
 
       {resumeFor && (
         <ResumePanel

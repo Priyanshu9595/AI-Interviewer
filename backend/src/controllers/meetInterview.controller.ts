@@ -291,11 +291,10 @@ async function bookInterview(userId: string, data: z.infer<typeof createSchema>)
       personality: data.personality,
       language: data.language,
       passMark: data.passMark,
-      // The coding round moves to a browser tab the candidate opens; recording
-      // and video analysis have no client to capture from at all, so they stay
-      // off rather than being silently ignored.
+      // The coding round moves to a browser tab the candidate opens; video
+      // analysis has no client to capture from at all, so it stays off rather
+      // than being silently ignored.
       codingEnabled: data.codingEnabled,
-      recordingEnabled: false,
       videoAnalysisEnabled: false,
     },
   });

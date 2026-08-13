@@ -32,7 +32,6 @@ interface Props {
   language: string;
   durationMinutes: number;
   videoAnalysisEnabled: boolean;
-  recordingEnabled: boolean;
   onFinished: () => void;
 }
 
@@ -68,7 +67,6 @@ export function LiveRoom({
   language,
   durationMinutes,
   videoAnalysisEnabled,
-  recordingEnabled,
   onFinished,
 }: Props) {
   const [phase, setPhase] = useState<Phase>('connecting');
@@ -90,10 +88,6 @@ export function LiveRoom({
 
   const socketRef = useRef<Socket | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const screenStreamRef = useRef<MediaStream | null>(null);
-  const recorderRef = useRef<MediaRecorder | null>(null);
-  const recordingMimeRef = useRef<string | null>(null);
-  const chunkFailuresRef = useRef(0);
   const videoRef = useRef<HTMLVideoElement>(null);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -226,91 +220,6 @@ export function LiveRoom({
           rafRef.current = requestAnimationFrame(tick);
         };
         rafRef.current = requestAnimationFrame(tick);
-
-        // Recording is opportunistic — an unsupported codec must not break the room.
-        if (recordingEnabled && typeof MediaRecorder !== 'undefined') {
-          let recordStream = stream;
-
-          if (devices.screenStream) {
-            screenStreamRef.current = devices.screenStream;
-
-            if (devices.cameraEnabled) {
-              const canvas = document.createElement('canvas');
-              canvas.width = 1280;
-              canvas.height = 720;
-              const ctx2d = canvas.getContext('2d');
-
-              if (ctx2d) {
-                const screenVideo = document.createElement('video');
-                screenVideo.srcObject = devices.screenStream;
-                screenVideo.muted = true;
-                screenVideo.playsInline = true;
-                await screenVideo.play().catch(() => {});
-
-                const camVideo = document.createElement('video');
-                camVideo.srcObject = stream;
-                camVideo.muted = true;
-                camVideo.playsInline = true;
-                await camVideo.play().catch(() => {});
-
-                const drawComposite = () => {
-                  if (cancelled) return;
-                  ctx2d.fillStyle = '#000';
-                  ctx2d.fillRect(0, 0, canvas.width, canvas.height);
-                  
-                  // Draw screen full size
-                  ctx2d.drawImage(screenVideo, 0, 0, canvas.width, canvas.height);
-                  
-                  // Draw camera PIP bottom right
-                  const pipW = 320;
-                  const pipH = 180;
-                  const pad = 20;
-                  ctx2d.drawImage(camVideo, canvas.width - pipW - pad, canvas.height - pipH - pad, pipW, pipH);
-                  
-                  rafRef.current = requestAnimationFrame(drawComposite);
-                };
-                rafRef.current = requestAnimationFrame(drawComposite);
-
-                const canvasStream = canvas.captureStream(30);
-                
-                // Add mic audio track
-                const audioTrack = stream.getAudioTracks()[0];
-                if (audioTrack) {
-                  canvasStream.addTrack(audioTrack);
-                }
-                recordStream = canvasStream;
-              }
-            } else {
-               // Screen only, add mic audio
-               const audioTrack = stream.getAudioTracks()[0];
-               if (audioTrack) {
-                 devices.screenStream.addTrack(audioTrack);
-               }
-               recordStream = devices.screenStream;
-            }
-          }
-
-          const mimeType = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm']
-            .find((t) => MediaRecorder.isTypeSupported(t));
-
-          if (mimeType) {
-            const recorder = new MediaRecorder(recordStream, { mimeType, videoBitsPerSecond: 800_000 });
-
-            // Each chunk is shipped as it is produced. Holding the whole
-            // recording in memory until the end meant that closing the tab, or
-            // any dropped connection, lost the entire session.
-            recorder.ondataavailable = (e) => {
-              if (e.data.size === 0) return;
-              void uploadChunk(e.data);
-            };
-
-            recorder.start(5000);
-            recorderRef.current = recorder;
-            recordingMimeRef.current = mimeType;
-          } else {
-            console.warn('[recording] no supported MediaRecorder mime type; this session will not be recorded');
-          }
-        }
       } catch {
         if (!cancelled) {
           setConnectionError('Could not access your microphone. Please allow access and reload the page.');
@@ -322,69 +231,10 @@ export function LiveRoom({
       cancelled = true;
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       streamRef.current?.getTracks().forEach((t) => t.stop());
-      screenStreamRef.current?.getTracks().forEach((t) => t.stop());
       void audioCtxRef.current?.close().catch(() => {});
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // --- Recording upload -------------------------------------------------
-
-  /**
-   * Ships one chunk. Failures are swallowed and retried implicitly by the next
-   * chunk — a dropped segment is far better than interrupting the interview,
-   * and the server keeps whatever did arrive.
-   */
-  const uploadChunk = useCallback(
-    async (blob: Blob) => {
-      const body = new FormData();
-      body.append('chunk', blob, 'chunk.webm');
-
-      try {
-        await api.post(`/interview/${token}/recording/chunk`, body, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-          timeout: 30_000,
-        });
-      } catch {
-        chunkFailuresRef.current += 1;
-        if (chunkFailuresRef.current === 3) {
-          console.warn('[recording] several chunks failed to upload; the recording may be incomplete');
-        }
-      }
-    },
-    [token],
-  );
-
-  /** Flushes the recorder and asks the server to assemble the final file. */
-  const finaliseRecording = useCallback(async () => {
-    const recorder = recorderRef.current;
-
-    if (recorder && recorder.state !== 'inactive') {
-      await new Promise<void>((resolve) => {
-        // requestData forces the final partial chunk out before stopping.
-        recorder.onstop = () => resolve();
-        try {
-          recorder.requestData();
-        } catch {
-          /* not all browsers allow this while recording */
-        }
-        recorder.stop();
-      });
-
-      // Give the last ondataavailable upload a moment to be issued.
-      await new Promise((r) => setTimeout(r, 600));
-    }
-
-    await api
-      .post(`/interview/${token}/recording/finalise`, {
-        durationSeconds: elapsed,
-        mimeType: recordingMimeRef.current ?? 'video/webm',
-      })
-      .catch(() => {
-        // The server also finalises when the interview ends, so this is a
-        // best-effort nudge rather than the only path.
-      });
-  }, [token, elapsed]);
 
   // --- Socket -----------------------------------------------------------
 
@@ -476,7 +326,7 @@ export function LiveRoom({
       listener.stop();
       stopSpeaking();
       setPhase('ended');
-      void finaliseRecording().finally(onFinished);
+      onFinished();
     });
 
     return () => {
@@ -552,7 +402,6 @@ export function LiveRoom({
     stopSpeaking();
     setPhase('ended');
     socketRef.current?.emit('end_interview');
-    await finaliseRecording();
     onFinished();
   };
 

@@ -11,9 +11,7 @@ import {
   Mail,
   Plug,
   ScanFace,
-  Video,
 } from 'lucide-react';
-import { RecordingPlayer } from '@/components/interview/RecordingPlayer';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { useToast } from '@/components/Toast';
 import {
@@ -86,7 +84,6 @@ interface Report {
     completedAt: string | null;
     candidate: { name: string; email: string; mobile: string | null };
     interviewSession: { id: string; title: string; type: string; experienceLevel: string; skills: string[] };
-    recording: { id: string; durationSeconds: number } | null;
     insights: Array<{ id: string; type: string; message: string; severity: number; createdAt: string }>;
     transcript: {
       turns: Array<{ id: string; speaker: string; text: string; round: string | null; latencyMs: number | null; timestamp: string }>;
@@ -509,20 +506,6 @@ export default function ReportPage() {
             </Card>
           )}
 
-          {/* Recording */}
-          {report.sessionCandidate.recording && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-1.5">
-                  <Video className="h-4 w-4 text-muted-foreground" />
-                  Session recording
-                </CardTitle>
-              </CardHeader>
-              <CardBody>
-                <RecordingPlayer sessionCandidateId={report.sessionCandidate.id} />
-              </CardBody>
-            </Card>
-          )}
         </div>
       )}
 

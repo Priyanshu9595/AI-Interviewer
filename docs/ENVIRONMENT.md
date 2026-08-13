@@ -157,23 +157,7 @@ you already have.
 
 ---
 
-## 9. Storage
-
-Without these, recordings and resumes are written to `backend/uploads/`, which
-does not survive a container restart. Set them for any real deployment.
-
-| Variable | Notes |
-|---|---|
-| `CLOUDINARY_CLOUD_NAME` | |
-| `CLOUDINARY_API_KEY` | |
-| `CLOUDINARY_API_SECRET` | |
-
-Meeting-bot interviews do not record video — there is no client to capture from
-— so this only affects browser-room interviews and resume files.
-
----
-
-## 10. Code execution
+## 9. Code execution
 
 Only used by browser-room interviews with a coding round. Meeting-bot
 interviews have coding disabled: a meeting call has no shared editor.
@@ -188,7 +172,7 @@ but it is **not a hardened boundary**.
 
 ---
 
-## 11. Frontend
+## 10. Frontend
 
 `frontend-v2/.env.local`. This is the only variable the browser sees, and it is
 deliberately not a secret.
@@ -203,7 +187,7 @@ status as well as the REST calls.
 
 ---
 
-## 12. A complete `backend/.env` for the meeting bot
+## 11. A complete `backend/.env` for the meeting bot
 
 ```env
 # --- required ---------------------------------------------------------------
@@ -254,7 +238,7 @@ npm --prefix backend run db:push            # create the tables
 
 ---
 
-## 13. Checking it
+## 12. Checking it
 
 `GET /health` reports what actually resolved at boot, which is faster than
 reading the file back:
@@ -264,7 +248,6 @@ reading the file back:
   "status": "ok",
   "database": "ok",
   "emailSender": "verified",
-  "recordingStorage": "ok",
   "speechToText": "ok",
   "meetBot": { "enabled": true, "voice": "deepgram", "running": 0, "capacity": 2 }
 }
@@ -273,11 +256,10 @@ reading the file back:
 - `speechToText: "disabled"` — `DEEPGRAM_API_KEY` is missing. The bot cannot hear.
 - `speechToText: "unreachable"` — the key was rejected, or the network is blocked.
 - `emailSender: "console"` — no `API_KEY_FOR_EMAIL`; invitations are printed, not sent.
-- `recordingStorage: "local"` — no Cloudinary; files go to `backend/uploads/`.
 
 ---
 
-## 14. Handling secrets
+## 13. Handling secrets
 
 - `backend/.env` is gitignored. Keep it that way.
 - `backend/.meet-bot-profile/` is gitignored and is a credential in its own

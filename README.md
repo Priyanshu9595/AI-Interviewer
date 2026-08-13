@@ -170,32 +170,12 @@ and Edge only). `GET /health` reports which is active as `speechToText`.
 
 | Asset | Where | Why |
 |---|---|---|
-| Interview recordings | Cloudinary | Large, and must survive a container restart |
 | Resume files | **Postgres** (`Bytes`) | Small, and part of the hiring record — kept with the interview it belongs to |
 | Parsed resume text and profile | Postgres | Queryable, feeds question generation and evaluation |
-
-Recordings are **cloud-only**: if Cloudinary rejects an upload, the streamed
-chunks stay queued and retry on the next scheduler tick rather than being
-written into the app's `uploads/` folder, where they would look stored but
-vanish on the next deploy. Cloudinary is verified at boot and reported by
-`/health` as `recordingStorage`.
 
 A resume upload stores the file and its extracted text **before** attempting AI
 analysis, so a provider outage never costs the candidate their upload — the
 profile and tailored questions are filled in later by the scheduler.
-
-### Recordings
-
-Recordings are listed under **Recordings** in the sidebar, and reachable per
-candidate from a session's candidate list and from the report page.
-
-**Recordings are streamed, not buffered.** The browser ships a chunk every five
-seconds and the server appends it. The original design held the whole recording
-in memory and uploaded once at the end, which meant closing the tab, refreshing,
-or a dropped socket lost the entire session — and in practice, that is what
-happened. Now the worst case is losing the last five seconds. When an interview
-ends the server assembles whatever arrived, so an abandoned interview still
-produces a playable recording.
 
 ### LLM quota
 
@@ -214,12 +194,6 @@ provider's quota is a real operational limit. When it is hit:
 On Groq's free tier the daily limit is 100,000 tokens, which a few full
 interviews will exhaust. `GROQ_SMART_MODEL` (evaluation, question generation) is
 the expensive one; point it at a smaller model to stretch the quota.
-
-Playback needs a URL rather than a protected byte stream, because a `<video>`
-element cannot send an `Authorization` header. The authenticated endpoint
-therefore returns a URL — the Cloudinary one, or a short-lived signed route for
-local files — and the player uses that. Local playback supports HTTP range
-requests so seeking works instead of buffering the whole file.
 
 ### Rounds
 
@@ -295,7 +269,7 @@ top the list.
 | Real-time intelligence (hesitation, pauses, confidence) | `InsightService.ts` |
 | Coding assessment with execution | `CodeExecutorService.ts`, `CodeAnalysisService.ts` |
 | Video / facial / emotion analysis | `useVideoAnalysis.ts`, `VideoAnalysisService.ts` |
-| Recording and transcripts | `interview.controller.ts`, `TranscriptService.ts` |
+| Transcripts | `TranscriptService.ts` |
 | Reports, PDF and Excel export | `ExportService.ts`, `/reports/[id]` |
 | Candidate ranking and comparison | `RankingService.ts`, `/sessions/[id]/compare` |
 | Recruiter dashboard and analytics | `/dashboard`, `/analytics` |
@@ -331,7 +305,6 @@ with an invalid configuration rather than failing later.
 | `GROQ_SMART_MODEL` | `llama-3.3-70b-versatile` | Question generation and evaluation |
 | `API_KEY_FOR_EMAIL` | — | Brevo key. Without it, emails are logged instead of sent |
 | `EMAIL_FROM` | — | **Must be a sender verified in Brevo** — see below |
-| `CLOUDINARY_CLOUD_NAME` / `_API_KEY` / `_API_SECRET` | — | Recording and resume storage. Falls back to local disk |
 | `GOOGLE_CLIENT_ID` / `_SECRET` / `_REFRESH_TOKEN` | — | Google Meet links |
 | `ZOOM_ACCOUNT_ID` / `_CLIENT_ID` / `_CLIENT_SECRET` | — | Zoom links |
 | `MS_TENANT_ID` / `_CLIENT_ID` / `_CLIENT_SECRET` / `MS_ORGANIZER_ID` | — | Teams links |
@@ -372,16 +345,6 @@ To fix: add and confirm the address at
 [app.brevo.com/senders](https://app.brevo.com/senders), or authenticate the whole
 domain for a professional `no-reply@yourcompany.com` sender.
 
-### Recordings and resumes
-
-Both go to Cloudinary when the three `CLOUDINARY_*` variables are set, and to
-`backend/uploads/` otherwise. A Cloudinary outage falls back to local disk rather
-than losing the file. Local storage does not survive a container restart, so set
-Cloudinary for any real deployment.
-
-Recording playback redirects to the Cloudinary URL; local recordings stream from
-the API. Replacing a recording deletes the previous asset rather than orphaning it.
-
 ## Deployment
 
 ### Backend
@@ -393,9 +356,7 @@ npm run build          # prisma generate && tsc  →  dist/
 npm start              # node dist/server.js
 ```
 
-Runs anywhere Node runs — Railway, Render, Fly.io, ECS, a VM. It needs a writable
-`uploads/` directory for recordings and a persistent filesystem, or an object-store
-adapter in front of `interview.controller.ts`.
+Runs anywhere Node runs — Railway, Render, Fly.io, ECS, a VM.
 
 **Scaling:** the interview state machine is held **in memory**, so all sockets for
 one interview must reach the same instance. Behind a load balancer, either enable
@@ -480,10 +441,8 @@ Targeted checks, run from `backend/` (all need the API running except the last t
 | `npm run verify:coding` | Optimal vs brute-force vs broken submissions score correctly, hidden tests run |
 | `npm run verify:resume` | PDF extraction, profile analysis, missing-skill detection, tailored questions |
 | `npm run verify:noshow` | Nudge inside the grace window, absent after it, future sessions untouched, idempotent |
-| `npm run verify:storage` | Cloudinary upload or local fallback, path traversal blocked, delete works |
 | `npm run verify:codingflow` | A coding question is generated, pushed to the editor, and runs on the compiler |
 | `npm run verify:gate` | Room does not open early; unused links expire; reconnects still work |
-| `npm run verify:recording` | Chunk streaming, abandoned-tab salvage, auth-free playback, range seeking |
 | `npm run verify:ratelimit` | Quota hints parsed (h/m/s), global cooldown engages and extends |
 | `npm run verify:speech` | Deepgram key, pre-recorded transcription, live socket |
 | `npm run verify:resumedb` | Resume bytes stored in Postgres and served back byte-identical |

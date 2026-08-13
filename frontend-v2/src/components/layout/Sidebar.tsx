@@ -44,8 +44,8 @@ export function Sidebar() {
           className={cn(
             'flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors',
             isActive(href)
-              ? 'bg-indigo-500/15 text-indigo-400'
-              : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100',
+              ? 'bg-indigo-500/15 text-indigo-300'
+              : 'text-slate-200 hover:bg-slate-800 hover:text-white',
           )}
         >
           <Icon className="h-4 w-4 shrink-0" />
@@ -67,8 +67,8 @@ export function Sidebar() {
           {initials(user.name ?? user.email)}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-slate-200">{user.name ?? 'Recruiter'}</p>
-          <p className="truncate text-xs text-slate-400">{user.email}</p>
+          <p className="truncate text-sm font-medium text-slate-100">{user.name ?? 'Recruiter'}</p>
+          <p className="truncate text-xs text-slate-300">{user.email}</p>
         </div>
         <button
           onClick={() => void logout()}

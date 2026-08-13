@@ -17,14 +17,15 @@ const envSchema = z.object({
   APP_URL: z.string().default('https://ai-interviewer-xi-nine.vercel.app'),
   API_URL: z.string().default('http://localhost:5000'),
 
-  // LLM provider. Groq is the default because it is fast enough for a live
-  // conversational loop.
   /**
    * Which service answers the model calls.
    *
-   * `auto` takes Mistral when its key is present and Groq otherwise, so
-   * switching is a matter of adding a key. Name one explicitly when both keys
-   * are set.
+   * `auto` with both keys set splits the work by what each is good at: Groq
+   * answers the conversational turns (its hardware is several times faster,
+   * and the candidate is waiting on every one), Mistral does the heavy
+   * off-the-clock work — question generation, evaluation, script translation —
+   * where its roomier quota matters more than speed. With one key, everything
+   * runs there. Name a provider explicitly to pin all calls to it.
    */
   LLM_PROVIDER: z.enum(['auto', 'groq', 'mistral']).default('auto'),
 

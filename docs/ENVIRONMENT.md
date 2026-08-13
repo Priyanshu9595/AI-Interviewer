@@ -65,8 +65,14 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 | Variable | Default | Notes |
 |---|---|---|
+| `LLM_PROVIDER` | `auto` | `auto` \| `groq` \| `mistral`. With **both** keys set, `auto` splits the work: Groq answers conversational turns (fastest hardware, candidate is waiting), Mistral does question generation, evaluation and script translation (roomier quota). With one key, everything runs there. Name a provider to pin all calls to it. |
 | `GROQ_FAST_MODEL` | `llama-3.1-8b-instant` | Every conversational turn. Latency is felt directly by the candidate, so speed wins here. |
 | `GROQ_SMART_MODEL` | `llama-3.3-70b-versatile` | Question generation and final evaluation, where quality matters more than speed. |
+| `MISTRAL_FAST_MODEL` | `mistral-small-latest` | As above, when Mistral serves the fast role. |
+| `MISTRAL_SMART_MODEL` | `mistral-large-latest` | As above, when Mistral serves the smart role. |
+
+Rate-limit cooldowns are tracked per provider, so Groq exhausting its daily
+conversation quota never pauses Mistral's evaluations, or the other way round.
 
 ---
 

@@ -22,43 +22,65 @@ interface Provider {
   readonly smartModel: string;
 }
 
-function resolveProvider(): Provider {
-  const groq: Provider = {
-    name: 'groq',
-    url: 'https://api.groq.com/openai/v1/chat/completions',
-    apiKey: env.GROQ_API_KEY ?? '',
-    fastModel: env.GROQ_FAST_MODEL,
-    smartModel: env.GROQ_SMART_MODEL,
-  };
+const groq: Provider = {
+  name: 'groq',
+  url: 'https://api.groq.com/openai/v1/chat/completions',
+  apiKey: env.GROQ_API_KEY ?? '',
+  fastModel: env.GROQ_FAST_MODEL,
+  smartModel: env.GROQ_SMART_MODEL,
+};
 
-  const mistral: Provider = {
-    name: 'mistral',
-    url: 'https://api.mistral.ai/v1/chat/completions',
-    apiKey: env.MISTRAL_API_KEY ?? '',
-    fastModel: env.MISTRAL_FAST_MODEL,
-    smartModel: env.MISTRAL_SMART_MODEL,
-  };
+const mistral: Provider = {
+  name: 'mistral',
+  url: 'https://api.mistral.ai/v1/chat/completions',
+  apiKey: env.MISTRAL_API_KEY ?? '',
+  fastModel: env.MISTRAL_FAST_MODEL,
+  smartModel: env.MISTRAL_SMART_MODEL,
+};
 
-  if (env.LLM_PROVIDER === 'groq') return groq;
-  if (env.LLM_PROVIDER === 'mistral') return mistral;
+/**
+ * The fast and smart roles are routed independently, because the two providers
+ * are good at different things: Groq's hardware answers a conversational turn
+ * in a fraction of the time (and the candidate is sitting there waiting for
+ * it), while Mistral's quota is far roomier for the heavy, off-the-clock work
+ * — question generation, evaluation, script translation.
+ *
+ * With both keys present that split is the default. `LLM_PROVIDER` pins
+ * everything to one provider when that is what you want.
+ */
+function resolveRouting(): { fast: Provider; smart: Provider; label: string } {
+  if (env.LLM_PROVIDER === 'groq') return { fast: groq, smart: groq, label: 'groq' };
+  if (env.LLM_PROVIDER === 'mistral') return { fast: mistral, smart: mistral, label: 'mistral' };
 
-  // Whichever key is present. Mistral first, so adding its key is all it takes
-  // to switch — with both set, LLM_PROVIDER decides.
-  return mistral.apiKey ? mistral : groq;
+  if (groq.apiKey && mistral.apiKey) {
+    return { fast: groq, smart: mistral, label: 'groq (fast) + mistral (smart)' };
+  }
+
+  const only = mistral.apiKey ? mistral : groq;
+  return { fast: only, smart: only, label: only.name };
 }
 
-export const provider = resolveProvider();
+const routing = resolveRouting();
 
-/** The two model names, whichever provider is in use. */
-export const FAST_MODEL = provider.fastModel;
-export const SMART_MODEL = provider.smartModel;
+/** What /health reports as the live provider. */
+export const providerLabel = routing.label;
+
+/** The two model names. Which service serves each is the routing's business. */
+export const FAST_MODEL = routing.fast.fastModel;
+export const SMART_MODEL = routing.smart.smartModel;
+
+/** Every call names a model; the model decides which provider answers it. */
+function providerFor(model: string): Provider {
+  if (model === routing.smart.smartModel) return routing.smart;
+  return routing.fast;
+}
 
 interface ChatResponse {
   choices?: Array<{ message?: { content?: string } }>;
 }
 
 /** One chat-completions call. Shared by both entry points below. */
-async function chat(body: Record<string, unknown>): Promise<string> {
+async function chat(provider: Provider, body: Record<string, unknown>): Promise<string> {
   if (!provider.apiKey) {
     throw new Error(`${provider.name.toUpperCase()}_API_KEY is not set, so the interviewer has no language model.`);
   }
@@ -131,42 +153,52 @@ function isRateLimit(err: unknown): boolean {
 }
 
 /**
- * When the provider blocks on a *daily* quota, every model call will fail for
- * the next hour. Remembering that globally stops each caller rediscovering it —
- * which otherwise floods the log and wastes a request per retry.
+ * When a provider blocks on a *daily* quota, every call to it will fail for
+ * the next hour. Remembering that stops each caller rediscovering it — which
+ * otherwise floods the log and wastes a request per retry.
+ *
+ * Tracked per provider, because the whole point of the split routing is that
+ * Groq exhausting its conversation quota must not pause Mistral's evaluations,
+ * and vice versa.
  */
-let cooldownUntil = 0;
+const cooldownUntil = new Map<Provider['name'], number>();
 
 export const llmCooldown = {
-  /** Seconds remaining, or 0 when calls should be attempted normally. */
-  remainingSeconds(): number {
-    const left = Math.ceil((cooldownUntil - Date.now()) / 1000);
+  /**
+   * Seconds remaining before calls for this model should be attempted again,
+   * or 0 to proceed. Defaults to the smart model, which is what the evaluation
+   * queue — the one external caller — is actually waiting on.
+   */
+  remainingSeconds(model: string = SMART_MODEL): number {
+    const left = Math.ceil(((cooldownUntil.get(providerFor(model).name) ?? 0) - Date.now()) / 1000);
     return left > 0 ? left : 0;
   },
 
-  engage(seconds: number) {
+  engage(seconds: number, providerName: Provider['name']) {
     const until = Date.now() + seconds * 1000;
     // Never shorten an existing cooldown.
-    if (until > cooldownUntil) {
-      cooldownUntil = until;
-      console.warn(`[ai] provider quota exhausted — pausing all model calls for ${Math.ceil(seconds / 60)} minute(s)`);
+    if (until > (cooldownUntil.get(providerName) ?? 0)) {
+      cooldownUntil.set(providerName, until);
+      console.warn(
+        `[ai] ${providerName} quota exhausted — pausing its calls for ${Math.ceil(seconds / 60)} minute(s)`,
+      );
     }
   },
 
   clear() {
-    cooldownUntil = 0;
+    cooldownUntil.clear();
   },
 };
 
-/** Throws immediately if the provider is known to be rate limited right now. */
-function assertNotCoolingDown() {
-  const remaining = llmCooldown.remainingSeconds();
-  if (remaining > 0) {
+/** Throws immediately if this provider is known to be rate limited right now. */
+function assertNotCoolingDown(provider: Provider) {
+  const left = Math.ceil(((cooldownUntil.get(provider.name) ?? 0) - Date.now()) / 1000);
+  if (left > 0) {
     const err = new RateLimitError(
-      new Error(`provider quota still exhausted, try again in ${Math.ceil(remaining / 60)}m`),
+      new Error(`${provider.name} quota still exhausted, try again in ${Math.ceil(left / 60)}m`),
     );
     // The parsed hint from the original message is not present here, so set it.
-    Object.defineProperty(err, 'retryAfterSeconds', { value: remaining, writable: false });
+    Object.defineProperty(err, 'retryAfterSeconds', { value: left, writable: false });
     throw err;
   }
 }
@@ -201,14 +233,15 @@ export async function complete({
   temperature = 0.6,
   maxTokens = 1024,
 }: CompleteOptions): Promise<string> {
-  assertNotCoolingDown();
+  const provider = providerFor(model);
+  assertNotCoolingDown(provider);
 
   try {
-    return await chat({ model, messages, temperature, max_tokens: maxTokens });
+    return await chat(provider, { model, messages, temperature, max_tokens: maxTokens });
   } catch (err) {
     if (isRateLimit(err)) {
       const rateLimit = new RateLimitError(err as Error);
-      if (rateLimit.retryAfterSeconds) llmCooldown.engage(rateLimit.retryAfterSeconds);
+      if (rateLimit.retryAfterSeconds) llmCooldown.engage(rateLimit.retryAfterSeconds, provider.name);
       throw rateLimit;
     }
     throw err;
@@ -234,7 +267,8 @@ export async function completeJson<T extends z.ZodTypeAny>({
   maxTokens = 4096,
   retries = 2,
 }: JsonOptions<T>): Promise<z.infer<T>> {
-  assertNotCoolingDown();
+  const provider = providerFor(model);
+  assertNotCoolingDown(provider);
 
   const convo = [...messages];
   let lastError: unknown;
@@ -242,7 +276,7 @@ export async function completeJson<T extends z.ZodTypeAny>({
   for (let attempt = 0; attempt <= retries; attempt++) {
     let raw = '';
     try {
-      raw = await chat({
+      raw = await chat(provider, {
         model,
         messages: convo,
         temperature,
@@ -260,7 +294,7 @@ export async function completeJson<T extends z.ZodTypeAny>({
         const rateLimit = new RateLimitError(err as Error);
         // Back off even when the provider gave no hint — a quota block that we
         // cannot time is exactly the case where hammering does most damage.
-        llmCooldown.engage(rateLimit.retryAfterSeconds ?? 5 * 60);
+        llmCooldown.engage(rateLimit.retryAfterSeconds ?? 5 * 60, provider.name);
         throw rateLimit;
       }
 

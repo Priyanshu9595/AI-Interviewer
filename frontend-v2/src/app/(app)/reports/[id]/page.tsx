@@ -155,6 +155,13 @@ export default function ReportPage() {
   const d = report.details;
   const safeName = c.name.replace(/[^a-z0-9]/gi, '_');
 
+  // The final verdict in two halves: how they communicate and behave, and
+  // what they can actually build. Without a coding round the second half is
+  // the technical score alone rather than an average against nothing.
+  const softAvg = (report.communicationScore + report.behavioralScore) / 2;
+  const hardAvg =
+    report.codingScore != null ? (report.technicalScore + report.codingScore) / 2 : report.technicalScore;
+
   const download = async (format: 'pdf' | 'xlsx') => {
     try {
       await downloadFile(`/reports/${report.id}/export.${format}`, `Interview_Report_${safeName}.${format}`);
@@ -268,6 +275,20 @@ export default function ReportPage() {
               {report.overallRating.toFixed(1)}
             </span>
             <span className="text-sm text-muted-foreground">/ 10 overall</span>
+          </div>
+
+          <div>
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">Communication &amp; behavioural</p>
+            <p className="mt-1 text-xl font-semibold tabular-nums">
+              {softAvg.toFixed(1)} <span className="text-sm font-normal text-muted-foreground">/ 10</span>
+            </p>
+          </div>
+
+          <div>
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">Technical &amp; coding</p>
+            <p className="mt-1 text-xl font-semibold tabular-nums">
+              {hardAvg.toFixed(1)} <span className="text-sm font-normal text-muted-foreground">/ 10</span>
+            </p>
           </div>
 
           <div>

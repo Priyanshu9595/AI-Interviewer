@@ -130,8 +130,17 @@ export class ExportService {
 
     // --- Scores
     heading('Scores');
+    // The verdict in two halves — soft skills and hard skills — above the
+    // individual dimensions they average. Without a coding round the hard
+    // half is the technical score alone.
+    const softAvg = (report.communicationScore + report.behavioralScore) / 2;
+    const hardAvg =
+      report.codingScore != null ? (report.technicalScore + report.codingScore) / 2 : report.technicalScore;
+
     const scoreRows: Array<[string, number | null]> = [
       ['Overall rating', report.overallRating],
+      ['Communication & behavioural', softAvg],
+      ['Technical & coding', hardAvg],
       ['Technical', report.technicalScore],
       ['Communication', report.communicationScore],
       ['Behavioral', report.behavioralScore],

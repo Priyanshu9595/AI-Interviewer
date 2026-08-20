@@ -64,6 +64,14 @@ export function audioBridgeScript(config: AudioBridgeConfig): string {
   var CFG = ${JSON.stringify(config)};
   if (window.__meetBot) return;
 
+  // Noise gate. See the block comment in ensureRecorder for what these are.
+  var GATE_MIN = 0.006;
+  var GATE_MAX = 0.02;
+  var GATE_OVER_FLOOR = 3.5;
+  var GATE_HOLD_S = 0.9;
+  var GATE_SEGMENT_S = 3;
+  var GATE_SEGMENTS = 4;
+
   var B = {
     ctx: null,
     outGain: null,
@@ -86,6 +94,16 @@ export function audioBridgeScript(config: AudioBridgeConfig): string {
     // Which taps have actually delivered audio, so a silent interview can be
     // diagnosed from the outside instead of guessed at.
     stats: { rtc: 0, webaudio: 0, element: 0, frames: 0, peak: 0 },
+    // The noise gate's running state, reported by status() so a bot that has
+    // gone quiet can be told apart from a gate that is stuck shut.
+    gate: {
+      floor: 0, threshold: 0, holdUntil: 0,
+      prev: null, spare: null, prevPass: false,
+      // Minimum statistics: the quietest block of the segment being measured,
+      // and the finished segments behind it.
+      segMin: 1, segBlocks: 0, history: [],
+      open: 0, muted: 0
+    },
     fallbackEnabled: false,
     // One bridging destination per foreign AudioContext. Nodes cannot be
     // connected across contexts, so each one needs its own crossing point.
@@ -247,7 +265,45 @@ export function audioBridgeScript(config: AudioBridgeConfig): string {
     var processor = ctx.createScriptProcessor(4096, 1, 1);
     var ratio = ctx.sampleRate / CFG.outputSampleRate;
     var frameSamples = Math.round(CFG.outputSampleRate * (CFG.frameMs / 1000));
+    /** Blocks per noise-floor segment, from the real buffer size and rate. */
+    var segmentBlocks = Math.max(1, Math.round((GATE_SEGMENT_S * ctx.sampleRate) / 4096));
 
+    /**
+     * The filters above remove what is below the voice; this removes what is
+     * beside it.
+     *
+     * A meeting carries every room it is connected to — a ceiling fan, a
+     * keyboard, a television next door, somebody else's conversation. None of
+     * it can be equalised away, because it sits in the same band as speech,
+     * and the recogniser is asked for words and will supply them: short,
+     * low-confidence text that gets written into the transcript as though the
+     * candidate said it.
+     *
+     * So the level decides. The room's own floor is measured continuously and
+     * anything not clearly above it is written out as digital silence.
+     *
+     *  - Silence, not a dropped frame. The stream stays continuous, so
+     *    Deepgram's own end-of-speech detection keeps working and the byte
+     *    rate never changes.
+     *  - The floor is the quietest block in the last twelve seconds, not a
+     *    running average. Speech is intermittent, so a window that long always
+     *    contains a gap between words — which means the estimate tracks the
+     *    room and can never be dragged upwards by the speaker. An average was
+     *    tried first and cannot do this: weighted to follow speech slowly it
+     *    never learns a steady fan at all, and weighted to learn the fan it
+     *    gates out the next quiet talker.
+     *  - The threshold is clamped at both ends. Never below about -44 dBFS, so
+     *    a very quiet room does not open the gate on its own hiss; never above
+     *    about -34 dBFS, so a noisy line cannot demand more than ordinary
+     *    speech delivers.
+     *  - One block is held back, so the block that turns out to contain the
+     *    start of a word is passed whole rather than clipped at its attack.
+     *  - The gate stays open for 900 ms after the level drops, so the pauses
+     *    inside a sentence are not punched out.
+     *
+     * peak is still measured before the gate, so the diagnostics keep telling
+     * the truth about what actually arrived.
+     */
     processor.onaudioprocess = function (event) {
       try {
         var input = event.inputBuffer.getChannelData(0);
@@ -256,23 +312,75 @@ export function audioBridgeScript(config: AudioBridgeConfig): string {
 
         // Loudest sample seen, so "we are capturing but it is pure silence"
         // can be told apart from "nothing is connected at all".
-        for (var p = 0; p < input.length; p += 16) {
+        var sumSq = 0;
+        for (var p = 0; p < input.length; p++) {
           var a = input[p] < 0 ? -input[p] : input[p];
           if (a > B.stats.peak) B.stats.peak = a;
+          sumSq += input[p] * input[p];
         }
 
-        for (var i = 0; i < outLength; i++) {
-          // Average the samples folding into each output sample. Dropping every
-          // third one instead would alias sibilants into the speech band and
-          // measurably hurt transcription.
-          var start = Math.floor(i * ratio);
-          var end = Math.floor((i + 1) * ratio);
-          var sum = 0;
-          var n = 0;
-          for (var j = start; j < end && j < input.length; j++) { sum += input[j]; n++; }
-          var v = n ? sum / n : 0;
-          if (v > 1) v = 1; else if (v < -1) v = -1;
-          out[i] = v < 0 ? v * 0x8000 : v * 0x7fff;
+        var rms = Math.sqrt(sumSq / input.length);
+
+        // The room floor: the quietest block seen across the segment in hand
+        // and the finished ones behind it.
+        if (rms < B.gate.segMin) B.gate.segMin = rms;
+        B.gate.segBlocks++;
+        if (B.gate.segBlocks >= segmentBlocks) {
+          B.gate.history.push(B.gate.segMin);
+          if (B.gate.history.length > GATE_SEGMENTS) B.gate.history.shift();
+          B.gate.segMin = 1;
+          B.gate.segBlocks = 0;
+        }
+
+        var floor = B.gate.segMin;
+        for (var h = 0; h < B.gate.history.length; h++) {
+          if (B.gate.history[h] < floor) floor = B.gate.history[h];
+        }
+        B.gate.floor = floor;
+
+        var threshold = floor * GATE_OVER_FLOOR;
+        if (threshold < GATE_MIN) threshold = GATE_MIN;
+        if (threshold > GATE_MAX) threshold = GATE_MAX;
+        B.gate.threshold = threshold;
+
+        var now = ctx.currentTime;
+        var passNow = rms >= threshold;
+        if (passNow) B.gate.holdUntil = now + GATE_HOLD_S;
+
+        // What is written out is the previous block, judged by its own level,
+        // by this block's, and by the hold left over from the last word.
+        var emit = B.gate.prev;
+        var pass = B.gate.prevPass || passNow || now < B.gate.holdUntil;
+
+        // Swap rather than allocate: the block just emitted becomes the
+        // scratch buffer for the next one.
+        var next = B.gate.spare || new Float32Array(input.length);
+        next.set(input);
+        B.gate.spare = emit;
+        B.gate.prev = next;
+        B.gate.prevPass = passNow;
+
+        // The very first block has nothing delayed behind it yet.
+        if (!emit) return;
+
+        if (pass) {
+          B.gate.open++;
+          for (var i = 0; i < outLength; i++) {
+            // Average the samples folding into each output sample. Dropping every
+            // third one instead would alias sibilants into the speech band and
+            // measurably hurt transcription.
+            var start = Math.floor(i * ratio);
+            var end = Math.floor((i + 1) * ratio);
+            var sum = 0;
+            var n = 0;
+            for (var j = start; j < end && j < emit.length; j++) { sum += emit[j]; n++; }
+            var v = n ? sum / n : 0;
+            if (v > 1) v = 1; else if (v < -1) v = -1;
+            out[i] = v < 0 ? v * 0x8000 : v * 0x7fff;
+          }
+        } else {
+          // Left as zeros. Silence keeps the stream running at the same rate.
+          B.gate.muted++;
         }
 
         B.pending.push(out);
@@ -671,6 +779,14 @@ export function audioBridgeScript(config: AudioBridgeConfig): string {
       sources: { rtc: B.stats.rtc, webaudio: B.stats.webaudio, element: B.stats.element },
       frames: B.stats.frames,
       peak: Math.round(B.stats.peak * 1000) / 1000,
+      // The noise gate, so "nobody said anything" and "the gate never opened"
+      // are distinguishable from outside the browser.
+      gate: {
+        floor: Math.round(B.gate.floor * 10000) / 10000,
+        threshold: Math.round(B.gate.threshold * 10000) / 10000,
+        open: B.gate.open,
+        muted: B.gate.muted
+      },
       mediaElements: document.querySelectorAll('audio, video').length,
       errors: B.errors.slice(-5)
     };

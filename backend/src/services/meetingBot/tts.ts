@@ -402,6 +402,8 @@ export interface BridgeStatus {
   frames: number;
   /** Loudest sample seen, 0..1. Zero with sources attached means silence. */
   peak: number;
+  /** The noise gate: the measured room floor, the level it demands, and its verdicts. */
+  gate: { floor: number; threshold: number; open: number; muted: number };
   mediaElements: number;
   errors: string[];
 }

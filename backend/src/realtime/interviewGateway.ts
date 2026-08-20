@@ -4,7 +4,13 @@ import { EvaluationQueue } from '../services/EvaluationQueue';
 import { InterviewStateMachine } from '../services/InterviewStateMachine';
 import { evaluateJoinGate } from '../services/JoinGate';
 import { InsightService } from '../services/InsightService';
-import { SpeechSession, SpeechResult, deepgramConfigured, getSpeechStatus } from '../services/SpeechService';
+import {
+  SpeechSession,
+  SpeechResult,
+  deepgramConfigured,
+  getSpeechStatus,
+  isLikelyNoise,
+} from '../services/SpeechService';
 
 interface Room {
   machine: InterviewStateMachine;
@@ -287,6 +293,17 @@ function createSpeechSession(nsp: Nsp, room: Room): SpeechSession {
     }
 
     const confidence = finalCount ? confidenceSum / finalCount : 0.9;
+
+    // A fan, a keyboard or a television resolved into words is not an answer.
+    // Treating it as one writes it to the transcript and walks the interview
+    // past a question the candidate never got to answer.
+    if (isLikelyNoise(text, confidence)) {
+      pending = '';
+      confidenceSum = 0;
+      finalCount = 0;
+      return;
+    }
+
     const now = Date.now();
 
     pending = '';

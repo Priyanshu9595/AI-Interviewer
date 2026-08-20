@@ -23,6 +23,7 @@
     "verify:ratelimit": "tsx scripts/ratelimittest.ts",
     "diagnose": "tsx scripts/diagnose.ts",
     "verify:speech": "tsx scripts/speechtest.ts",
+    "verify:noise": "tsx scripts/noisetest.ts",
     "verify:resumedb": "tsx scripts/resumedbtest.ts",
     "verify:incomplete": "tsx scripts/incompletetest.ts",
     "bot:login": "tsx scripts/botlogin.ts",

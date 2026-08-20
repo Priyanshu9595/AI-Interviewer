@@ -1,7 +1,7 @@
 import { EventEmitter } from 'events';
 import type { Page } from 'playwright';
 import { env } from '../../lib/env';
-import { SpeechSession, type SpeechResult, deepgramConfigured } from '../SpeechService';
+import { SpeechSession, type SpeechResult, deepgramConfigured, isLikelyNoise } from '../SpeechService';
 import { BotError } from './errors';
 import { audioBridgeScript } from './injected/audioBridge';
 import { createTtsDriver, type BridgeStatus, type MeetBotWindow, type TtsDriver } from './tts';
@@ -71,6 +71,29 @@ const CAPTURE_FALLBACK_MS = 12_000;
 /** A second, louder warning if even the fallbacks find nothing. */
 const CAPTURE_DEAF_MS = 40_000;
 
+/**
+ * Frame level that counts as somebody speaking, as a fraction of full scale.
+ *
+ * About -40 dBFS. A quiet room with an open microphone sits well below it;
+ * conversational speech over a meeting sits an order of magnitude above. Only
+ * used to decide whether anyone is present — never to gate an answer, which is
+ * the bridge's job.
+ */
+const SPEECH_RMS = 0.01;
+
+/** Root-mean-square level of one 16-bit PCM frame, 0..1. */
+function frameRms(chunk: Buffer): number {
+  const samples = Math.floor(chunk.length / 2);
+  if (!samples) return 0;
+
+  let sum = 0;
+  for (let i = 0; i < samples; i++) {
+    const s = chunk.readInt16LE(i * 2) / 32768;
+    sum += s * s;
+  }
+  return Math.sqrt(sum / samples);
+}
+
 export class AudioManager extends EventEmitter {
   private speech: SpeechSession | null = null;
   private readonly tts: TtsDriver;
@@ -92,6 +115,8 @@ export class AudioManager extends EventEmitter {
   private speaking = false;
   private audioSeen = false;
   private heardSound = false;
+  /** Consecutive frames at speech level, before anyone has been heard. */
+  private loudFrames = 0;
   private captureTimers: NodeJS.Timeout[] = [];
 
   constructor(
@@ -276,17 +301,24 @@ export class AudioManager extends EventEmitter {
 
     // Frames arrive continuously once anything is connected, including pure
     // silence, so their existence proves nothing about who is in the room.
-    // Actual sound does: a meeting client does not generate speech on its own.
+    // Speech does: a meeting client does not generate it on its own.
+    //
+    // Measured across the whole frame rather than from a single loud sample.
+    // One sample just over the noise floor is a fan, a door, or a laptop being
+    // put down — none of which mean anybody is there, and all of which used to
+    // be enough to start an interview in an empty meeting.
     if (!this.heardSound) {
-      for (let i = 0; i + 1 < chunk.length; i += 64) {
-        const sample = chunk.readInt16LE(i);
-        // ~1% of full scale. Above the noise floor of an open microphone,
-        // far below anything that could be mistaken for silence.
-        if (sample > 300 || sample < -300) {
+      if (frameRms(chunk) >= SPEECH_RMS) {
+        this.loudFrames++;
+        // Two frames is half a second of speech-level audio. A knock or a
+        // cough cannot hold that; anybody saying hello comfortably does.
+        if (this.loudFrames >= 2) {
           this.heardSound = true;
-          console.log(`[meet-bot ${this.opts.interviewId}] heard real audio — somebody is in the meeting`);
-          break;
+          console.log(`[meet-bot ${this.opts.interviewId}] heard speech — somebody is in the meeting`);
         }
+      } else {
+        // Consecutive, so scattered thumps never add up to a person.
+        this.loudFrames = 0;
       }
     }
     this.speech ??= this.openSpeechSession();
@@ -352,6 +384,15 @@ export class AudioManager extends EventEmitter {
     if (!this.accepting) {
       // Heard while the interviewer was speaking or thinking. Almost certainly
       // the AI's own voice coming back through the candidate's microphone.
+      return;
+    }
+
+    // A meeting carries every noise in every participant's room. The gate in
+    // the bridge keeps most of it out of the recogniser; this catches what
+    // still came back as words, because accepting it would both pollute the
+    // transcript and move the interview past an unanswered question.
+    if (isLikelyNoise(text, confidence)) {
+      console.log(`[meet-bot ${this.opts.interviewId}] ignored background noise: "${text}" (${confidence.toFixed(2)})`);
       return;
     }
 

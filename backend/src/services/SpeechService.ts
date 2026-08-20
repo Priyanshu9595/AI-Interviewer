@@ -14,6 +14,75 @@ export interface SpeechResult {
 }
 
 /**
+ * Vocalisations that are not an answer.
+ *
+ * Only non-lexical sounds belong here. "okay", "so", "yeah" and "no" are all
+ * real replies somewhere in the interview — "no" ends the closing round — so
+ * they are deliberately absent.
+ */
+const FILLER_ONLY = new Set([
+  'uh', 'uhh', 'uhhh', 'um', 'umm', 'ummm', 'hm', 'hmm', 'hmmm', 'mm', 'mmm',
+  'mhm', 'mhmm', 'ah', 'aah', 'ahh', 'oh', 'ooh', 'eh', 'huh', 'er', 'err', 'erm',
+]);
+
+/** Deepgram brackets what it could not resolve into words: [BLANK_AUDIO], (music). */
+const NON_SPEECH_MARKER = /^[[(<][^\])>]*[\])>]$/;
+
+/**
+ * Below this, a final transcript is noise whatever it says.
+ *
+ * Clear speech comes back from nova-3 at 0.9 and above; a fan, a keyboard or a
+ * television resolved into words lands far lower. Set well under the speech
+ * range so an accent, a poor microphone or a noisy line is never mistaken for
+ * an empty room.
+ */
+const MIN_CONFIDENCE = 0.4;
+
+/**
+ * The same floor, raised for one- and two-word results.
+ *
+ * That is where noise most often lands — a single invented word — and it is
+ * also where the cost of dropping a real answer is lowest, because a genuine
+ * one-word reply that matters ("no", "yes") is recognised confidently.
+ */
+const MIN_SHORT_CONFIDENCE = 0.6;
+
+/**
+ * Whether a settled transcript is background noise rather than an answer.
+ *
+ * The recogniser is asked for words and will supply them: a desk fan, a
+ * television in the next room or a chair scraping all come back as short,
+ * low-confidence text. Accepted as an answer, that text is written to the
+ * transcript, scored by the evaluator, and — worse — moves the interview past
+ * a question the candidate never actually answered.
+ *
+ * Deliberately conservative. Dropping a real answer is a far worse failure
+ * than letting one piece of noise through, so every rule here needs both a
+ * shape that carries no answer and a confidence the recogniser itself doubts.
+ */
+export function isLikelyNoise(text: string, confidence: number): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return true;
+
+  // Punctuation on its own — the recogniser heard something and wrote nothing.
+  const spoken = trimmed.replace(/[^\p{L}\p{N}'-]+/gu, ' ').trim();
+  if (!spoken) return true;
+
+  if (NON_SPEECH_MARKER.test(trimmed)) return true;
+
+  if (confidence < MIN_CONFIDENCE) return true;
+
+  const words = spoken.toLowerCase().split(/\s+/).filter(Boolean);
+
+  // Nothing but throat-clearing, however clearly it was heard.
+  if (words.every((w) => FILLER_ONLY.has(w))) return true;
+
+  if (words.length <= 2 && confidence < MIN_SHORT_CONFIDENCE) return true;
+
+  return false;
+}
+
+/**
  * How the audio being streamed is encoded.
  *
  * The browser sends a WebM/Opus container, which Deepgram sniffs on its own.

@@ -24,6 +24,8 @@
     "diagnose": "tsx scripts/diagnose.ts",
     "verify:speech": "tsx scripts/speechtest.ts",
     "verify:noise": "tsx scripts/noisetest.ts",
+    "verify:models": "tsx scripts/modeltest.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.scripts.json",
     "verify:resumedb": "tsx scripts/resumedbtest.ts",
     "verify:incomplete": "tsx scripts/incompletetest.ts",
     "bot:login": "tsx scripts/botlogin.ts",

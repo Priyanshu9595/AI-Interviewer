@@ -31,8 +31,11 @@ const envSchema = z.object({
 
   // Neither key is required on its own; the check below requires one of them.
   GROQ_API_KEY: z.string().optional(),
-  GROQ_FAST_MODEL: z.string().default('llama-3.1-8b-instant'),
-  GROQ_SMART_MODEL: z.string().default('llama-3.3-70b-versatile'),
+  // Groq retires model names on its own schedule and the old one simply stops
+  // existing — the Llama 3.x names these defaulted to are gone. Check
+  // https://console.groq.com/docs/models against the account before changing.
+  GROQ_FAST_MODEL: z.string().default('openai/gpt-oss-20b'),
+  GROQ_SMART_MODEL: z.string().default('openai/gpt-oss-120b'),
 
   MISTRAL_API_KEY: z.string().optional(),
   MISTRAL_FAST_MODEL: z.string().default('mistral-small-latest'),

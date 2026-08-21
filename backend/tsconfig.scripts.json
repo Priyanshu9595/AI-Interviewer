@@ -1,0 +1,10 @@
+{
+  // The verification scripts are run with tsx, which strips types without
+  // checking them. That let a script keep calling a function whose signature
+  // had changed underneath it, failing at runtime for a reason the failure
+  // output did not explain. They are checked here rather than in the main
+  // tsconfig so they stay out of the build.
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "noEmit": true, "rootDir": "." },
+  "include": ["src/**/*.ts", "scripts/**/*.ts"]
+}

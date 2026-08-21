@@ -2,7 +2,7 @@
  * Checks how the system behaves when the LLM provider blocks on quota — the
  * situation that produced a retry flood and an opaque 500 for the recruiter.
  */
-import { RateLimitError, llmCooldown } from '../src/lib/ai';
+import { RateLimitError, llmCooldown, providerOf, FAST_MODEL, SMART_MODEL } from '../src/lib/ai';
 
 const failures: string[] = [];
 const check = (name: string, ok: boolean) => {
@@ -34,16 +34,33 @@ console.log('\n4. Global cooldown');
 llmCooldown.clear();
 check('starts clear', llmCooldown.remainingSeconds() === 0);
 
-llmCooldown.engage(120);
+// Keyed by provider, so the checks have to name the one that the default
+// remainingSeconds() query - the smart model, which is what the evaluation
+// queue waits on - actually consults.
+const smartProvider = providerOf(SMART_MODEL);
+const fastProvider = providerOf(FAST_MODEL);
+
+llmCooldown.engage(120, smartProvider);
 const remaining = llmCooldown.remainingSeconds();
-console.log(`   engaged: ${remaining}s remaining`);
+console.log(`   engaged ${smartProvider}: ${remaining}s remaining`);
 check('engaging pauses model calls', remaining > 115 && remaining <= 120);
 
-llmCooldown.engage(30);
+llmCooldown.engage(30, smartProvider);
 check('a shorter cooldown never shortens an active one', llmCooldown.remainingSeconds() > 115);
 
-llmCooldown.engage(600);
+llmCooldown.engage(600, smartProvider);
 check('a longer cooldown extends it', llmCooldown.remainingSeconds() > 590);
+
+// The whole point of the split routing: one provider running out of quota
+// must not pause the other one's work.
+if (fastProvider !== smartProvider) {
+  check(
+    `${fastProvider} keeps working while ${smartProvider} is blocked`,
+    llmCooldown.remainingSeconds(FAST_MODEL) === 0,
+  );
+} else {
+  console.log(`  SKIP  both roles run on ${smartProvider}, so there is no isolation to check`);
+}
 
 llmCooldown.clear();
 check('clearing resumes normal calls', llmCooldown.remainingSeconds() === 0);

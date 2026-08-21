@@ -72,10 +72,18 @@ export function configureMeetBotGateway(io: Server) {
       const user = socket.data.user as AuthUser;
 
       // A recruiter may only watch interviews from their own sessions.
-      const owned = await prisma.sessionCandidate.findFirst({
-        where: { id: interviewId, interviewSession: { userId: user.userId } },
-        select: { id: true, meetBotRun: { select: { status: true, statusDetail: true, errorMessage: true } } },
-      });
+      // Without this the recruiter's panel waits on an ack that never comes,
+      // so a database blip looks like the interview itself has vanished.
+      let owned;
+      try {
+        owned = await prisma.sessionCandidate.findFirst({
+          where: { id: interviewId, interviewSession: { userId: user.userId } },
+          select: { id: true, meetBotRun: { select: { status: true, statusDetail: true, errorMessage: true } } },
+        });
+      } catch (err) {
+        console.error('[meet-bot gateway] could not look up the interview:', err);
+        return ack?.({ ok: false, error: 'Could not load this interview. Please try again.' });
+      }
 
       if (!owned) return ack?.({ ok: false, error: 'Interview not found' });
 

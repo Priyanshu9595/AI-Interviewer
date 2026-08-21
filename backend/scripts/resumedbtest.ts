@@ -83,7 +83,9 @@ function makeResumePdf(): Promise<Buffer> {
   console.log(`   generated ${pdf.length} byte PDF`);
 
   const form = new FormData();
-  form.append('resume', new Blob([pdf], { type: 'application/pdf' }), 'anita-desai.pdf');
+  // Copied into a plain Uint8Array: a Node Buffer's backing store is typed as
+  // possibly shared, which Blob does not accept.
+  form.append('resume', new Blob([new Uint8Array(pdf)], { type: 'application/pdf' }), 'anita-desai.pdf');
 
   const res = await fetch(`${API}/api/interview/${invited.accessToken}/resume`, { method: 'POST', body: form });
   const raw = await res.text();

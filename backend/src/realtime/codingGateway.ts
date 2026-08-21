@@ -51,10 +51,18 @@ export function configureCodingGateway(io: Server) {
       const token = String(payload?.token ?? '');
       if (!token) return ack?.({ ok: false, error: 'A token is required' });
 
-      const sc = await prisma.sessionCandidate.findUnique({
-        where: { accessToken: token },
-        select: { id: true, candidate: { select: { name: true } }, interviewSession: { select: { title: true } } },
-      });
+      // Without this the client is left waiting on an ack that never comes:
+      // a database blip would hang the editor with nothing on screen to say so.
+      let sc;
+      try {
+        sc = await prisma.sessionCandidate.findUnique({
+          where: { accessToken: token },
+          select: { id: true, candidate: { select: { name: true } }, interviewSession: { select: { title: true } } },
+        });
+      } catch (err) {
+        console.error('[coding] could not look up the interview:', err);
+        return ack?.({ ok: false, error: 'The editor could not be reached. Please try again.' });
+      }
 
       if (!sc) return ack?.({ ok: false, error: 'This link is not valid' });
 

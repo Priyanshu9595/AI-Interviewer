@@ -103,10 +103,13 @@ export default function ReportsPage() {
                     <thead>
                       <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
                         <th className="py-2.5 pl-5 font-medium">Candidate</th>
-                        <th className="py-2.5 text-center font-medium">Overall</th>
-                        <th className="py-2.5 text-center font-medium">Tech</th>
-                        <th className="py-2.5 text-center font-medium">Comm</th>
-                        <th className="py-2.5 text-center font-medium">Behav</th>
+                        {/* The scale sits in the header rather than in every cell: four
+                            columns of "5.8 / 10" on every row is noise, but a column of
+                            bare numbers does not say what it is out of. */}
+                        <th className="py-2.5 text-center font-medium">Overall / 10</th>
+                        <th className="py-2.5 text-center font-medium">Tech / 10</th>
+                        <th className="py-2.5 text-center font-medium">Comm / 10</th>
+                        <th className="py-2.5 text-center font-medium">Behav / 10</th>
                         <th className="py-2.5 font-medium">Recommendation</th>
                         <th className="py-2.5 pr-5 font-medium">Date</th>
                       </tr>

@@ -366,7 +366,11 @@ export function ScoreBar({
       {label && (
         <div className="flex items-baseline justify-between gap-3">
           <span className="text-sm text-foreground">{label}</span>
-          <span className="font-mono text-sm tabular-nums text-muted-foreground">{value.toFixed(1)}</span>
+          {/* Out of what, always. A bare 5.8 next to a bar reads as a count as
+              easily as a score, and the same page shows 5.8 / 10 elsewhere. */}
+          <span className="font-mono text-sm tabular-nums text-muted-foreground">
+            {value.toFixed(1)} / {max}
+          </span>
         </div>
       )}
       <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">

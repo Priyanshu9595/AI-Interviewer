@@ -360,7 +360,7 @@ export default function ReportPage() {
                 <Card key={category}>
                   <CardHeader>
                     <CardTitle>{category}</CardTitle>
-                    <Badge tone={scoreTone(headline)}>{headline.toFixed(1)}</Badge>
+                    <Badge tone={scoreTone(headline)}>{headline.toFixed(1)} / 10</Badge>
                   </CardHeader>
                   <CardBody className="space-y-3">
                     {rows.map((row) => (

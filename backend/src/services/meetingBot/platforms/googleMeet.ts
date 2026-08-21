@@ -5,7 +5,6 @@ import {
   CAMERA_TRY,
   clickFirst,
   clickLocator,
-  fillFirst,
   findFirst,
   isPresent,
   postChatMessage,

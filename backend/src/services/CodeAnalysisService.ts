@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import { complete, completeJson, FAST_MODEL, SMART_MODEL } from '../lib/ai';
-import { env } from '../lib/env';
 import type { ExecutionResult } from './CodeExecutorService';
 
 const reviewSchema = z.object({

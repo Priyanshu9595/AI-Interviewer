@@ -117,9 +117,7 @@ export class InterviewStateMachine extends EventEmitter {
   private greetingPrompts = 0;
   /** Turns of hello-how-are-you spoken so far, capped so it stays brief. */
   private greetingExchanges = 0;
-  private startedAt: Date | null = null;
   private candidateName = 'Candidate';
-  private askedIdentity = false;
   /**
    * Translates the scripted lines below into the session's language. The LLM
    * turns arrive already localised — their system prompt names the language —
@@ -369,7 +367,6 @@ export class InterviewStateMachine extends EventEmitter {
     }
 
     this.clearWaitTimers();
-    this.startedAt = new Date();
 
     await prisma.sessionCandidate
       .update({
@@ -713,7 +710,6 @@ export class InterviewStateMachine extends EventEmitter {
     this.state = 'IDENTITY_VERIFICATION';
     this.emit('state', { state: this.state, round: 'IDENTITY', progress: 0 });
 
-    this.askedIdentity = true;
     await this.say(
       await this.t(
         this.interviewer?.intro(opener) ??

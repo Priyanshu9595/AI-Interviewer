@@ -33,16 +33,3 @@ export const requireAuth = (req: AuthRequest, _res: Response, next: NextFunction
     next(unauthorized('Invalid or expired token'));
   }
 };
-
-/** Reads the user when a token is present but never rejects the request. */
-export const optionalAuth = (req: AuthRequest, _res: Response, next: NextFunction) => {
-  const header = req.headers.authorization;
-  if (header?.startsWith('Bearer ')) {
-    try {
-      req.user = jwt.verify(header.slice('Bearer '.length), env.JWT_SECRET) as AuthUser;
-    } catch {
-      /* ignore — treated as anonymous */
-    }
-  }
-  next();
-};

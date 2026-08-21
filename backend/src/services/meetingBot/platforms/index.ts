@@ -63,8 +63,4 @@ export function isSupportedMeetingLink(input: string): boolean {
   }
 }
 
-/** Whether joining this platform needs the signed-in bot profile. */
-export const platformRequiresSignIn = (platform: MeetingPlatform): boolean =>
-  driverFor(platform).requiresSignIn;
-
 export const platformLabel = (platform: MeetingPlatform): string => PLATFORM_LABEL[platform] ?? platform;

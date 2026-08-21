@@ -1,7 +1,6 @@
 import { InterviewType, InterviewerPersonality, Prisma, QuestionCategory, QuestionDifficulty } from '@prisma/client';
 import { z } from 'zod';
 import { completeJson, SMART_MODEL } from '../lib/ai';
-import { env } from '../lib/env';
 import { prisma } from '../lib/prisma';
 import { LANGUAGES } from './personality';
 

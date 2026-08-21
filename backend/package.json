@@ -19,7 +19,6 @@
     "verify:noshow": "tsx scripts/noshowtest.ts",
     "verify:codingflow": "tsx scripts/codingflow.ts",
     "verify:gate": "tsx scripts/gatetest.ts",
-    "pending": "tsx scripts/pendingcheck.ts",
     "verify:ratelimit": "tsx scripts/ratelimittest.ts",
     "diagnose": "tsx scripts/diagnose.ts",
     "verify:speech": "tsx scripts/speechtest.ts",

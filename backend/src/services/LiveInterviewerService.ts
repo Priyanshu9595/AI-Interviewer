@@ -1,7 +1,6 @@
 import { InterviewerPersonality, QuestionCategory } from '@prisma/client';
 import { z } from 'zod';
 import { ChatMessage, complete, completeJson, FAST_MODEL } from '../lib/ai';
-import { env } from '../lib/env';
 import { LineLocalizer } from './localize';
 import { PERSONALITIES, languageName } from './personality';
 

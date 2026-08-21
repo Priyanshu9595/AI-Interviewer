@@ -8,7 +8,6 @@
 import { io, Socket } from 'socket.io-client';
 
 const API = 'http://localhost:5000';
-const NL = String.fromCharCode(10);
 
 let token = '';
 let cookie = '';

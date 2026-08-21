@@ -148,9 +148,8 @@ without a report is treated as outstanding work:
 - The recruiter sees the state on the candidate row — *Generating report…*,
   *Report retrying in 8 minutes*, or *Report failed* with a **Retry now** button.
 
-`GET /api/interviews/:id/evaluation` returns that state,
-`POST /api/interviews/:id/evaluate` forces a fresh attempt, and
-`npm run pending` lists everything still waiting.
+`GET /api/interviews/:id/evaluation` returns that state and
+`POST /api/interviews/:id/evaluate` forces a fresh attempt.
 
 ### Speech to text
 

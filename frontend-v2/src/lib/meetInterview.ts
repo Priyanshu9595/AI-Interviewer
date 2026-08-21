@@ -155,10 +155,6 @@ export const MEET_STATUS: Record<MeetBotStatus, StatusMeta> = {
 export const statusMeta = (status: MeetBotStatus): StatusMeta =>
   MEET_STATUS[status] ?? { label: status, tone: 'neutral', live: false };
 
-/** The stage a recruiter would call "the interview is actually happening". */
-export const isInterviewing = (status: MeetBotStatus) =>
-  ['INTRODUCTION', 'QUESTIONING', 'FOLLOW_UP', 'FINAL_QUESTION'].includes(status);
-
 export const canStart = (status: MeetBotStatus) =>
   ['SCHEDULED', 'FAILED', 'CANCELLED'].includes(status);
 

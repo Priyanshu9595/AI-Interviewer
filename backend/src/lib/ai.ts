@@ -450,10 +450,3 @@ export async function completeJson<T extends z.ZodTypeAny>({
 
   throw new Error(`Model failed to produce valid JSON after ${retries + 1} attempts: ${String(lastError)}`);
 }
-
-/** Compact JSON-schema hint appended to prompts so the model knows the shape. */
-export function schemaHint(shape: Record<string, string>): string {
-  return `Respond with a single JSON object of exactly this shape:\n{\n${Object.entries(shape)
-    .map(([k, v]) => `  "${k}": ${v}`)
-    .join(',\n')}\n}`;
-}

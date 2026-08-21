@@ -1,6 +1,5 @@
 import { EventEmitter } from 'events';
 import type { Page } from 'playwright';
-import { env } from '../../lib/env';
 import { SpeechSession, type SpeechResult, deepgramConfigured, isLikelyNoise } from '../SpeechService';
 import { BotError } from './errors';
 import { audioBridgeScript } from './injected/audioBridge';
@@ -485,6 +484,3 @@ export class AudioManager extends EventEmitter {
     this.removeAllListeners();
   }
 }
-
-/** Whether the configured voice needs a virtual audio device on the host. */
-export const ttsNeedsVirtualAudio = () => env.MEET_BOT_TTS === 'webspeech';

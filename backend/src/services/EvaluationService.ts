@@ -1,7 +1,6 @@
 import { HiringRecommendation, Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { completeJson, SMART_MODEL } from '../lib/ai';
-import { env } from '../lib/env';
 import { prisma } from '../lib/prisma';
 import { extractSignals, scoreCommunication } from './CommunicationAnalyzer';
 import { InsightService } from './InsightService';

@@ -233,33 +233,31 @@ Return JSON: { technical{knowledge,problemSolving,logicalThinking,projectUnderst
     const communicationScore = round1(communication.overall * 0.8 + insights.composure * 0.2);
     const videoConfidenceScore = video ? round1(video.confidenceScore) : null;
 
-    // Two halves, weighted equally, and equally again within each half.
+    // Two halves, weighted equally: communication with behavioural, technical
+    // with coding. Inside a half the two partners are equal too — and when one
+    // of them was never evaluated the other carries the whole half on its own,
+    // rather than being averaged against a zero it did not earn.
     //
-    // The previous scheme weighted five dimensions by interview type and then
-    // divided by however much of that weight it had managed to measure. That
-    // last step is the reason it had to go: dividing by the measured weight is
-    // the same as filling every missing dimension in with the candidate's own
-    // average, so producing no evidence scored better than producing weak
-    // evidence. In a technical round, submitting nothing at all beat
-    // submitting bad code by more than a point — the fifty percent that coding
-    // carried simply left the sum. Nothing a candidate declines to do should
-    // improve their result.
+    // The same applies one level up: a half with nothing in it at all leaves
+    // the other half as the entire score.
     //
-    // So a dimension that was part of the interview and went unanswered scores
-    // zero. It is only left out when the interview never included it, which is
-    // a property of the session rather than of the candidate: with no coding
-    // round configured the hard half is the technical score by itself.
-    //
-    // This is also the arithmetic the report has always displayed, so the two
-    // halves on the summary strip and the overall beneath them now agree.
-    const softHalf = round1((communicationScore + (behavioralScore ?? 0)) / 2);
+    // Note what this means for a dimension the candidate simply did not engage
+    // with. Not answering the behavioural questions is scored the same as
+    // never having been asked them, so it lifts the soft half to the
+    // communication score alone — leaving them unanswered comes out ahead of
+    // answering them badly. Submitting no code does the same to the hard half.
+    // That is the deliberate trade for never charging a candidate for a
+    // dimension the interview did not actually measure.
+    const halfOf = (a: number | null, b: number | null): number | null => {
+      const scored = [a, b].filter((n): n is number => n != null);
+      return scored.length ? round1(avg(scored)) : null;
+    };
 
-    const hardTechnical = technicalScore ?? 0;
-    const hardHalf = session.codingEnabled
-      ? round1((hardTechnical + (codingScore ?? 0)) / 2)
-      : round1(hardTechnical);
+    const softHalf = halfOf(communicationScore, behavioralScore);
+    const hardHalf = halfOf(technicalScore, codingScore);
 
-    const overallRating = round1(Math.max(0, Math.min(10, (softHalf + hardHalf) / 2)));
+    const halves = [softHalf, hardHalf].filter((n): n is number => n != null);
+    const overallRating = halves.length ? round1(Math.max(0, Math.min(10, avg(halves)))) : 0;
 
     const { recommendation, reason } = recommend({
       overall: overallRating,
@@ -278,8 +276,13 @@ Return JSON: { technical{knowledge,problemSolving,logicalThinking,projectUnderst
       halves: {
         soft: softHalf,
         hard: hardHalf,
-        /** False when no coding round was configured, so the hard half is technical alone. */
-        codingIncluded: session.codingEnabled,
+        /** Which partners actually carried each half, so a report explains its own arithmetic. */
+        measured: {
+          communication: communicationScore != null,
+          behavioral: behavioralScore != null,
+          technical: technicalScore != null,
+          coding: codingScore != null,
+        },
       },
       communication: {
         ...communication,

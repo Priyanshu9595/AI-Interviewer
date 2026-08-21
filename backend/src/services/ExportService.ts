@@ -11,6 +11,11 @@ const ACCENT = '#4f46e5';
 const RULE = '#e2e8f0';
 
 type Details = {
+  halves?: {
+    soft: number;
+    hard: number;
+    measured?: { communication: boolean; behavioral: boolean; technical: boolean; coding: boolean };
+  };
   communication?: { fluency: number; confidence: number; clarity: number; grammar: number; vocabulary: number; pace: number; notes?: string[] };
   technical?: Record<string, number | string>;
   behavioral?: Record<string, number | string>;
@@ -138,13 +143,20 @@ export class ExportService {
     // reports predate the stored pair, so they still get the local fallback.
     const { soft: softAvg, hard: hardAvg } = reportHalves(report);
 
+    // A dimension nobody could score is not a zero, and printing it as one
+    // would contradict the halves above, which leave it out and let its partner
+    // carry the whole half. Null drops the row, the same way coding and video
+    // confidence already disappear when there is nothing to say.
+    const measured = details.halves?.measured;
+    const scored = (value: number, was: boolean | undefined) => ((was ?? value > 0) ? value : null);
+
     const scoreRows: Array<[string, number | null]> = [
       ['Overall rating', report.overallRating],
       ['Communication & behavioural', softAvg],
       ['Technical & coding', hardAvg],
-      ['Technical', report.technicalScore],
-      ['Communication', report.communicationScore],
-      ['Behavioral', report.behavioralScore],
+      ['Technical', scored(report.technicalScore, measured?.technical)],
+      ['Communication', scored(report.communicationScore, measured?.communication)],
+      ['Behavioral', scored(report.behavioralScore, measured?.behavioral)],
       ['Coding', report.codingScore],
       ['Video confidence', report.videoConfidenceScore],
     ];

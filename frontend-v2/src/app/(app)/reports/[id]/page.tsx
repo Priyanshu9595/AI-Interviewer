@@ -49,7 +49,11 @@ interface Report {
   scoresByCategory: Record<string, Array<{ label: string; value: number; evidence: string | null }>>;
   details: {
     /** The two halves the overall rating is the mean of, as the evaluator scored them. */
-    halves?: { soft: number; hard: number; codingIncluded: boolean };
+    halves?: {
+      soft: number;
+      hard: number;
+      measured?: { communication: boolean; behavioral: boolean; technical: boolean; coding: boolean };
+    };
     communication?: { notes?: string[]; signals?: Record<string, number> };
     technical?: { notes?: string };
     behavioral?: { notes?: string };
@@ -90,6 +94,13 @@ interface Report {
     } | null;
   };
 }
+
+/** Which measured flag backs each score card. */
+const MEASURED_KEY = {
+  Communication: 'communication',
+  Technical: 'technical',
+  Behavioral: 'behavioral',
+} as const;
 
 const INSIGHT_TONE: Record<string, 'success' | 'warning' | 'danger' | 'neutral'> = {
   STRONG_ANSWER: 'success',
@@ -158,13 +169,17 @@ export default function ReportPage() {
   // what they can actually build. The overall rating is their mean, so both
   // come from the evaluator rather than being worked out again here — this
   // page deriving its own is how it once showed 7.5 overall above halves of
-  // 2.9 and 6.5. Reports written before the pair was stored fall back to the
-  // old local reading.
-  const softAvg =
-    d.halves?.soft ?? (report.communicationScore + report.behavioralScore) / 2;
-  const hardAvg =
-    d.halves?.hard ??
-    (report.codingScore != null ? (report.technicalScore + report.codingScore) / 2 : report.technicalScore);
+  // 2.9 and 6.5.
+  //
+  // Reports written before the pair was stored are rebuilt on the same rule:
+  // an unevaluated partner leaves the other carrying the half alone. Their
+  // overall predates it, so for those it will not be the mean of these two.
+  const pair = (a: number, b: number | null) => {
+    const scored = [a || null, b || null].filter((n): n is number => n != null);
+    return scored.length ? scored.reduce((x, y) => x + y, 0) / scored.length : 0;
+  };
+  const softAvg = d.halves?.soft ?? pair(report.communicationScore, report.behavioralScore);
+  const hardAvg = d.halves?.hard ?? pair(report.technicalScore, report.codingScore);
 
   const download = async (format: 'pdf' | 'xlsx') => {
     try {
@@ -356,17 +371,34 @@ export default function ReportPage() {
                     ? report.technicalScore
                     : report.behavioralScore;
 
+              // A dimension nobody could score is not a zero, and showing it as
+              // one contradicts the half above, which leaves it out entirely and
+              // lets its partner carry the whole thing. Older reports have no
+              // measured flags, so fall back to whether any sub-score survived.
+              const measured =
+                d.halves?.measured?.[MEASURED_KEY[category]] ?? (rows.length > 0 || headline > 0);
+
               return (
                 <Card key={category}>
                   <CardHeader>
                     <CardTitle>{category}</CardTitle>
-                    <Badge tone={scoreTone(headline)}>{headline.toFixed(1)} / 10</Badge>
+                    {measured ? (
+                      <Badge tone={scoreTone(headline)}>{headline.toFixed(1)} / 10</Badge>
+                    ) : (
+                      <Badge tone="neutral">Not evaluated</Badge>
+                    )}
                   </CardHeader>
                   <CardBody className="space-y-3">
                     {rows.map((row) => (
                       <ScoreBar key={row.label} label={row.label} value={row.value} />
                     ))}
-                    {rows.length === 0 && <p className="text-sm text-muted-foreground">No sub-scores recorded.</p>}
+                    {rows.length === 0 && (
+                      <p className="text-sm text-muted-foreground">
+                        {measured
+                          ? 'No sub-scores recorded.'
+                          : 'Nothing here could be scored, so the other half of this pair carries the whole score.'}
+                      </p>
+                    )}
                   </CardBody>
                 </Card>
               );

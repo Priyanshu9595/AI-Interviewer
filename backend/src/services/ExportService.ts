@@ -2,6 +2,7 @@ import { Response } from 'express';
 import ExcelJS from 'exceljs';
 import PDFDocument from 'pdfkit';
 import { prisma } from '../lib/prisma';
+import { reportHalves } from '../lib/reportScores';
 import { RankingService } from './RankingService';
 
 const INK = '#0f172a';
@@ -131,11 +132,11 @@ export class ExportService {
     // --- Scores
     heading('Scores');
     // The verdict in two halves — soft skills and hard skills — above the
-    // individual dimensions they average. Without a coding round the hard
-    // half is the technical score alone.
-    const softAvg = (report.communicationScore + report.behavioralScore) / 2;
-    const hardAvg =
-      report.codingScore != null ? (report.technicalScore + report.codingScore) / 2 : report.technicalScore;
+    // individual dimensions they average. The evaluator works these out and
+    // stores them, because the overall is their mean; deriving them again here
+    // is how this page once came to disagree with the number above it. Older
+    // reports predate the stored pair, so they still get the local fallback.
+    const { soft: softAvg, hard: hardAvg } = reportHalves(report);
 
     const scoreRows: Array<[string, number | null]> = [
       ['Overall rating', report.overallRating],

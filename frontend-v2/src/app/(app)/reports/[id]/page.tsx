@@ -48,6 +48,8 @@ interface Report {
   createdAt: string;
   scoresByCategory: Record<string, Array<{ label: string; value: number; evidence: string | null }>>;
   details: {
+    /** The two halves the overall rating is the mean of, as the evaluator scored them. */
+    halves?: { soft: number; hard: number; codingIncluded: boolean };
     communication?: { notes?: string[]; signals?: Record<string, number> };
     technical?: { notes?: string };
     behavioral?: { notes?: string };
@@ -153,11 +155,16 @@ export default function ReportPage() {
   const safeName = c.name.replace(/[^a-z0-9]/gi, '_');
 
   // The final verdict in two halves: how they communicate and behave, and
-  // what they can actually build. Without a coding round the second half is
-  // the technical score alone rather than an average against nothing.
-  const softAvg = (report.communicationScore + report.behavioralScore) / 2;
+  // what they can actually build. The overall rating is their mean, so both
+  // come from the evaluator rather than being worked out again here — this
+  // page deriving its own is how it once showed 7.5 overall above halves of
+  // 2.9 and 6.5. Reports written before the pair was stored fall back to the
+  // old local reading.
+  const softAvg =
+    d.halves?.soft ?? (report.communicationScore + report.behavioralScore) / 2;
   const hardAvg =
-    report.codingScore != null ? (report.technicalScore + report.codingScore) / 2 : report.technicalScore;
+    d.halves?.hard ??
+    (report.codingScore != null ? (report.technicalScore + report.codingScore) / 2 : report.technicalScore);
 
   const download = async (format: 'pdf' | 'xlsx') => {
     try {

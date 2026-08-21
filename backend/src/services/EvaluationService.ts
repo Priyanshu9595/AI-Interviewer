@@ -233,30 +233,33 @@ Return JSON: { technical{knowledge,problemSolving,logicalThinking,projectUnderst
     const communicationScore = round1(communication.overall * 0.8 + insights.composure * 0.2);
     const videoConfidenceScore = video ? round1(video.confidenceScore) : null;
 
-    // Weighting shifts with interview type: an HR round should not be decided
-    // by a technical score derived from three questions.
-    const weights =
-      session.type === 'HR'
-        ? { technical: 0.15, communication: 0.4, behavioral: 0.4, coding: 0, video: 0.05 }
-        : session.type === 'TECHNICAL'
-          ? { technical: 0.2, communication: 0.15, behavioral: 0.1, coding: 0.5, video: 0.05 }
-          : { technical: 0.15, communication: 0.2, behavioral: 0.1, coding: 0.5, video: 0.05 };
+    // Two halves, weighted equally, and equally again within each half.
+    //
+    // The previous scheme weighted five dimensions by interview type and then
+    // divided by however much of that weight it had managed to measure. That
+    // last step is the reason it had to go: dividing by the measured weight is
+    // the same as filling every missing dimension in with the candidate's own
+    // average, so producing no evidence scored better than producing weak
+    // evidence. In a technical round, submitting nothing at all beat
+    // submitting bad code by more than a point — the fifty percent that coding
+    // carried simply left the sum. Nothing a candidate declines to do should
+    // improve their result.
+    //
+    // So a dimension that was part of the interview and went unanswered scores
+    // zero. It is only left out when the interview never included it, which is
+    // a property of the session rather than of the candidate: with no coding
+    // round configured the hard half is the technical score by itself.
+    //
+    // This is also the arithmetic the report has always displayed, so the two
+    // halves on the summary strip and the overall beneath them now agree.
+    const softHalf = round1((communicationScore + (behavioralScore ?? 0)) / 2);
 
-    // Redistribute weight from any dimension we could not measure.
-    let usable = weights.communication;
-    if (technicalScore != null) usable += weights.technical;
-    if (behavioralScore != null) usable += weights.behavioral;
-    if (codingScore != null) usable += weights.coding;
-    if (videoConfidenceScore != null) usable += weights.video;
+    const hardTechnical = technicalScore ?? 0;
+    const hardHalf = session.codingEnabled
+      ? round1((hardTechnical + (codingScore ?? 0)) / 2)
+      : round1(hardTechnical);
 
-    const weighted =
-      (technicalScore != null ? technicalScore * weights.technical : 0) +
-      communicationScore * weights.communication +
-      (behavioralScore != null ? behavioralScore * weights.behavioral : 0) +
-      (codingScore != null ? codingScore * weights.coding : 0) +
-      (videoConfidenceScore != null ? videoConfidenceScore * weights.video : 0);
-
-    const overallRating = usable > 0 ? round1(Math.max(0, Math.min(10, weighted / usable))) : 0;
+    const overallRating = round1(Math.max(0, Math.min(10, (softHalf + hardHalf) / 2)));
 
     const { recommendation, reason } = recommend({
       overall: overallRating,
@@ -268,6 +271,16 @@ Return JSON: { technical{knowledge,problemSolving,logicalThinking,projectUnderst
 
     // --- Persist ----------------------------------------------------------
     const details = {
+      // The two halves the overall is the mean of. Stored rather than left to
+      // each reader to reconstruct: the report page and the PDF used to derive
+      // their own, drifted from this one, and showed a recruiter an overall
+      // higher than either of the halves it was supposedly the average of.
+      halves: {
+        soft: softHalf,
+        hard: hardHalf,
+        /** False when no coding round was configured, so the hard half is technical alone. */
+        codingIncluded: session.codingEnabled,
+      },
       communication: {
         ...communication,
         signals,
@@ -300,7 +313,9 @@ Return JSON: { technical{knowledge,problemSolving,logicalThinking,projectUnderst
           sc.startedAt && sc.completedAt
             ? Math.round((sc.completedAt.getTime() - sc.startedAt.getTime()) / 60_000)
             : null,
-        weights,
+        // Recorded so a report can be read back against the rule that scored
+        // it, rather than whatever the rule happens to be when it is opened.
+        scoring: { rule: 'equal-halves', codingEnabled: session.codingEnabled },
       },
     };
 

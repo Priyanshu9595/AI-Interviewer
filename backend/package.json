@@ -25,6 +25,7 @@
     "verify:speech": "tsx scripts/speechtest.ts",
     "verify:noise": "tsx scripts/noisetest.ts",
     "verify:models": "tsx scripts/modeltest.ts",
+    "verify:scoring": "tsx scripts/scoringtest.ts",
     "typecheck": "tsc --noEmit -p tsconfig.scripts.json",
     "verify:resumedb": "tsx scripts/resumedbtest.ts",
     "verify:incomplete": "tsx scripts/incompletetest.ts",

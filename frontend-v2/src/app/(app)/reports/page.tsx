@@ -12,9 +12,8 @@ import { avatarColor, cn, formatDateTime, initials } from '@/lib/utils';
 interface ReportRow {
   id: string;
   overallRating: number;
-  technicalScore: number;
-  communicationScore: number;
-  behavioralScore: number;
+  /** The two halves the overall is the mean of, resolved by the API. */
+  halves: { soft: number; hard: number };
   hiringRecommendation: string;
   createdAt: string;
   sessionCandidate: {
@@ -103,13 +102,14 @@ export default function ReportsPage() {
                     <thead>
                       <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
                         <th className="py-2.5 pl-5 font-medium">Candidate</th>
-                        {/* The scale sits in the header rather than in every cell: four
-                            columns of "5.8 / 10" on every row is noise, but a column of
-                            bare numbers does not say what it is out of. */}
+                        {/* The two halves rather than the four dimensions. The overall is
+                            their mean, so a row can be checked at a glance — where a
+                            column of Tech, Comm and Behav left out coding entirely and
+                            made every overall look wrong. The scale sits in the header
+                            because repeating "/ 10" in every cell is noise. */}
                         <th className="py-2.5 text-center font-medium">Overall / 10</th>
-                        <th className="py-2.5 text-center font-medium">Tech / 10</th>
-                        <th className="py-2.5 text-center font-medium">Comm / 10</th>
-                        <th className="py-2.5 text-center font-medium">Behav / 10</th>
+                        <th className="py-2.5 text-center font-medium">Comm &amp; behav / 10</th>
+                        <th className="py-2.5 text-center font-medium">Tech &amp; coding / 10</th>
                         <th className="py-2.5 font-medium">Recommendation</th>
                         <th className="py-2.5 pr-5 font-medium">Date</th>
                       </tr>
@@ -142,13 +142,10 @@ export default function ReportsPage() {
                             <Badge tone={scoreTone(r.overallRating)}>{r.overallRating.toFixed(1)}</Badge>
                           </td>
                           <td className="py-3 text-center tabular-nums text-muted-foreground">
-                            {r.technicalScore.toFixed(1)}
+                            {r.halves.soft.toFixed(1)}
                           </td>
                           <td className="py-3 text-center tabular-nums text-muted-foreground">
-                            {r.communicationScore.toFixed(1)}
-                          </td>
-                          <td className="py-3 text-center tabular-nums text-muted-foreground">
-                            {r.behavioralScore.toFixed(1)}
+                            {r.halves.hard.toFixed(1)}
                           </td>
 
                           <td className="py-3">

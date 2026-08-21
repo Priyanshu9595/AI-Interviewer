@@ -5,6 +5,7 @@ import { emailService } from '../lib/email/EmailService';
 import { env } from '../lib/env';
 import { badRequest, notFound, param } from '../lib/http';
 import { prisma } from '../lib/prisma';
+import { reportHalves } from '../lib/reportScores';
 import { AtsService } from '../services/AtsService';
 import { ExportService } from '../services/ExportService';
 
@@ -20,9 +21,21 @@ export const listRecentReports = async (req: AuthRequest, res: Response) => {
     where: { sessionCandidate: { interviewSession: { userId: req.user!.userId } } },
     orderBy: { createdAt: 'desc' },
     take: limit,
-    include: {
+    select: {
+      id: true,
+      overallRating: true,
+      technicalScore: true,
+      communicationScore: true,
+      behavioralScore: true,
+      codingScore: true,
+      hiringRecommendation: true,
+      createdAt: true,
+      // Only for the halves below. The rest of details is a large object with
+      // transcripts and submissions in it, and the list has no use for any of
+      // it — fifty rows of that was most of the response.
+      details: true,
       sessionCandidate: {
-        include: {
+        select: {
           candidate: { select: { name: true, email: true } },
           interviewSession: { select: { id: true, title: true, type: true } },
         },
@@ -30,7 +43,12 @@ export const listRecentReports = async (req: AuthRequest, res: Response) => {
     },
   });
 
-  res.json(reports);
+  // The two halves the overall is the mean of, resolved here so the list shows
+  // the same arithmetic as the report itself rather than re-deriving it from
+  // columns that cannot tell an unscored dimension from a zero.
+  res.json(
+    reports.map(({ details, ...row }) => ({ ...row, halves: reportHalves({ ...row, details }) })),
+  );
 };
 
 export const getReport = async (req: AuthRequest, res: Response) => {

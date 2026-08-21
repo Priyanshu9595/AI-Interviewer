@@ -10,15 +10,21 @@
  * replaced, not kept.
  *
  *   npm run reevaluate -- <email or sessionCandidateId>
+ *   npm run reevaluate -- --stale        list every report predating the rule
+ *   npm run reevaluate -- --stale --write re-run all of them, oldest first
  */
 import { prisma } from '../src/lib/prisma';
 import { EvaluationService } from '../src/services/EvaluationService';
 import { reportHalves } from '../src/lib/reportScores';
 
-const target = process.argv[2];
+const args = process.argv.slice(2);
+const stale = args.includes('--stale');
+const write = args.includes('--write');
+const target = args.find((a) => !a.startsWith('--'));
 
-if (!target) {
+if (!target && !stale) {
   console.error('Usage: npm run reevaluate -- <email or sessionCandidateId>');
+  console.error('       npm run reevaluate -- --stale [--write]');
   process.exit(1);
 }
 
@@ -47,9 +53,78 @@ function show(label: string, r: Snapshot | null) {
   );
 }
 
+/**
+ * Every report written before the rule stored its halves.
+ *
+ * Their overall came from the old weighting, so it is not the mean of the two
+ * halves the list now shows beside it, and the row reads as broken until the
+ * evaluation is run again.
+ */
+async function runStale() {
+  const rows = await prisma.report.findMany({
+    orderBy: { createdAt: 'asc' },
+    select: {
+      sessionCandidateId: true,
+      overallRating: true,
+      createdAt: true,
+      details: true,
+      sessionCandidate: {
+        select: { candidate: { select: { name: true, email: true } }, interviewSession: { select: { title: true } } },
+      },
+    },
+  });
+
+  const pending = rows.filter((r) => !(r.details as { halves?: unknown } | null)?.halves);
+
+  console.log(`${rows.length} report(s), ${pending.length} predating the current rule`);
+  console.log('');
+  for (const r of pending) {
+    console.log(
+      `  ${r.createdAt.toISOString().slice(0, 10)}  ${String(r.overallRating.toFixed(1)).padStart(4)}` +
+        `  ${r.sessionCandidate.candidate.name} — ${r.sessionCandidate.interviewSession.title}`,
+    );
+  }
+
+  if (!pending.length) return;
+
+  if (!write) {
+    console.log('');
+    console.log('Nothing was changed. Add --write to re-run these, which replaces each report.');
+    return;
+  }
+
+  console.log('');
+  let done = 0;
+  let failed = 0;
+
+  for (const r of pending) {
+    const who = r.sessionCandidate.candidate.name;
+    try {
+      await EvaluationService.evaluate(r.sessionCandidateId);
+      const after = await prisma.report.findUnique({
+        where: { sessionCandidateId: r.sessionCandidateId },
+        select: { overallRating: true },
+      });
+      const from = r.overallRating.toFixed(1);
+      const to = after?.overallRating.toFixed(1) ?? '?';
+      console.log(`  ok    ${who.padEnd(20)} ${from} -> ${to}`);
+      done++;
+    } catch (err) {
+      // One bad transcript should not stop the rest of the backlog.
+      console.log(`  fail  ${who.padEnd(20)} ${(err as Error).message.slice(0, 90)}`);
+      failed++;
+    }
+  }
+
+  console.log('');
+  console.log(`${done} re-scored, ${failed} failed`);
+}
+
 async function main() {
+  if (stale) return runStale();
+
   const sc = await prisma.sessionCandidate.findFirst({
-    where: target.includes('@') ? { candidate: { email: target } } : { id: target },
+    where: target!.includes('@') ? { candidate: { email: target! } } : { id: target! },
     orderBy: { createdAt: 'desc' },
     include: { candidate: true, report: true, interviewSession: { select: { title: true, passMark: true } } },
   });

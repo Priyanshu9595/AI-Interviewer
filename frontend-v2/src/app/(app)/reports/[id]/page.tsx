@@ -171,15 +171,10 @@ export default function ReportPage() {
   // page deriving its own is how it once showed 7.5 overall above halves of
   // 2.9 and 6.5.
   //
-  // Reports written before the pair was stored are rebuilt on the same rule:
-  // an unevaluated partner leaves the other carrying the half alone. Their
-  // overall predates it, so for those it will not be the mean of these two.
-  const pair = (a: number, b: number | null) => {
-    const scored = [a || null, b || null].filter((n): n is number => n != null);
-    return scored.length ? scored.reduce((x, y) => x + y, 0) / scored.length : 0;
-  };
-  const softAvg = d.halves?.soft ?? pair(report.communicationScore, report.behavioralScore);
-  const hardAvg = d.halves?.hard ?? pair(report.technicalScore, report.codingScore);
+  // A report scored before the rule has no pair, and inventing one would put
+  // two numbers beside an overall that is not their mean — the contradiction
+  // this was meant to remove. Those reports show the overall alone.
+  const halves = d.halves ?? null;
 
   const download = async (format: 'pdf' | 'xlsx') => {
     try {
@@ -269,19 +264,31 @@ export default function ReportPage() {
             <span className="text-sm text-muted-foreground">/ 10 overall</span>
           </div>
 
-          <div>
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">Communication &amp; behavioural</p>
-            <p className="mt-1 text-xl font-semibold tabular-nums">
-              {softAvg.toFixed(1)} <span className="text-sm font-normal text-muted-foreground">/ 10</span>
-            </p>
-          </div>
+          {halves ? (
+            <>
+              <div>
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Communication &amp; behavioural</p>
+                <p className="mt-1 text-xl font-semibold tabular-nums">
+                  {halves.soft.toFixed(1)} <span className="text-sm font-normal text-muted-foreground">/ 10</span>
+                </p>
+              </div>
 
-          <div>
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">Technical &amp; coding</p>
-            <p className="mt-1 text-xl font-semibold tabular-nums">
-              {hardAvg.toFixed(1)} <span className="text-sm font-normal text-muted-foreground">/ 10</span>
-            </p>
-          </div>
+              <div>
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Technical &amp; coding</p>
+                <p className="mt-1 text-xl font-semibold tabular-nums">
+                  {halves.hard.toFixed(1)} <span className="text-sm font-normal text-muted-foreground">/ 10</span>
+                </p>
+              </div>
+            </>
+          ) : (
+            <div className="sm:col-span-2">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Breakdown</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Scored before the current rule, so this report has no two-half breakdown. Re-run the
+                evaluation to score it the way the interviews below it were.
+              </p>
+            </div>
+          )}
 
           <div>
             <p className="text-xs uppercase tracking-wide text-muted-foreground">Recommendation</p>

@@ -12,8 +12,8 @@ import { avatarColor, cn, formatDateTime, initials } from '@/lib/utils';
 interface ReportRow {
   id: string;
   overallRating: number;
-  /** The two halves the overall is the mean of, resolved by the API. */
-  halves: { soft: number; hard: number };
+  /** The two halves the overall is the mean of. Null for reports scored before the rule. */
+  halves: { soft: number; hard: number } | null;
   hiringRecommendation: string;
   createdAt: string;
   sessionCandidate: {
@@ -142,10 +142,10 @@ export default function ReportsPage() {
                             <Badge tone={scoreTone(r.overallRating)}>{r.overallRating.toFixed(1)}</Badge>
                           </td>
                           <td className="py-3 text-center tabular-nums text-muted-foreground">
-                            {r.halves.soft.toFixed(1)}
+                            {r.halves ? r.halves.soft.toFixed(1) : '—'}
                           </td>
                           <td className="py-3 text-center tabular-nums text-muted-foreground">
-                            {r.halves.hard.toFixed(1)}
+                            {r.halves ? r.halves.hard.toFixed(1) : '—'}
                           </td>
 
                           <td className="py-3">

@@ -139,9 +139,9 @@ export class ExportService {
     // The verdict in two halves — soft skills and hard skills — above the
     // individual dimensions they average. The evaluator works these out and
     // stores them, because the overall is their mean; deriving them again here
-    // is how this page once came to disagree with the number above it. Older
-    // reports predate the stored pair, so they still get the local fallback.
-    const { soft: softAvg, hard: hardAvg } = reportHalves(report);
+    // is how this page once came to disagree with the number above it. A report
+    // scored before the rule has no pair and simply omits the two rows.
+    const halves = reportHalves(report);
 
     // A dimension nobody could score is not a zero, and printing it as one
     // would contradict the halves above, which leave it out and let its partner
@@ -152,8 +152,8 @@ export class ExportService {
 
     const scoreRows: Array<[string, number | null]> = [
       ['Overall rating', report.overallRating],
-      ['Communication & behavioural', softAvg],
-      ['Technical & coding', hardAvg],
+      ['Communication & behavioural', halves?.soft ?? null],
+      ['Technical & coding', halves?.hard ?? null],
       ['Technical', scored(report.technicalScore, measured?.technical)],
       ['Communication', scored(report.communicationScore, measured?.communication)],
       ['Behavioral', scored(report.behavioralScore, measured?.behavioral)],

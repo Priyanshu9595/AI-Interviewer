@@ -43,10 +43,15 @@ function show(label: string, r: Snapshot | null) {
     console.log(`  ${label.padEnd(7)} (none)`);
     return;
   }
-  const { soft, hard } = reportHalves(r);
+  // A report scored before the rule has no halves at all — that is the point
+  // of running this on it.
+  const halves = reportHalves(r);
+  const soft = halves ? halves.soft.toFixed(1).padStart(4) : '   —';
+  const hard = halves ? halves.hard.toFixed(1).padStart(4) : '   —';
+
   console.log(
     `  ${label.padEnd(7)} overall ${r.overallRating.toFixed(1).padStart(4)}` +
-      `   soft ${soft.toFixed(1).padStart(4)}   hard ${hard.toFixed(1).padStart(4)}` +
+      `   soft ${soft}   hard ${hard}` +
       `   |  comm ${r.communicationScore.toFixed(1)}  behav ${r.behavioralScore.toFixed(1)}` +
       `  tech ${r.technicalScore.toFixed(1)}  coding ${r.codingScore?.toFixed(1) ?? '—'}` +
       `   ${r.hiringRecommendation}`,

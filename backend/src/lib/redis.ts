@@ -30,12 +30,15 @@ export function redis(): Redis {
   if (client) return client;
 
   client = new Redis(env.REDIS_URL, {
-    // Fail a command that cannot reach Redis instead of queueing it forever:
-    // an endpoint waiting on a queued command holds the request open with no
-    // way to answer the caller.
+    // A command must not be able to hang a request forever, but it must be
+    // allowed to wait out the opening TLS handshake. Disabling the offline
+    // queue does the first at the cost of the second: the very first command
+    // is rejected outright because the socket is still connecting, which on a
+    // cold process means the first signup of the day fails and the next one
+    // works. So the queue stays on and the bounds are timeouts instead.
     maxRetriesPerRequest: 2,
-    enableOfflineQueue: false,
     connectTimeout: 5_000,
+    commandTimeout: 5_000,
     // Upstash and Fly both terminate TLS; the URL scheme decides, and ioredis
     // reads rediss:// on its own. Nothing to configure here.
     lazyConnect: false,

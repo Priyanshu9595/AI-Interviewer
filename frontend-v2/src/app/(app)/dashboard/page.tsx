@@ -8,7 +8,6 @@ import {
   CheckCircle2,
   FileText,
   Plus,
-  TrendingUp,
   UserX,
   Users,
 } from 'lucide-react';
@@ -186,34 +185,6 @@ export default function DashboardPage() {
           tone={(t?.absent ?? 0) > 0 ? 'warning' : 'primary'}
         />
       </div>
-
-      {(overview?.totals.reports ?? 0) > 0 && (
-        <Card className="mt-4">
-          <CardBody className="grid gap-5 sm:grid-cols-2 lg:grid-cols-5">
-            {[
-              { label: 'Average overall', value: overview!.avgScores.overall },
-              { label: 'Technical', value: overview!.avgScores.technical },
-              { label: 'Communication', value: overview!.avgScores.communication },
-              { label: 'Behavioral', value: overview!.avgScores.behavioral },
-            ].map((s) => (
-              <div key={s.label}>
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{s.label}</p>
-                <p className="mt-1 text-xl font-semibold tabular-nums">
-                  {s.value.toFixed(1)}
-                  <span className="text-sm font-normal text-muted-foreground"> / 10</span>
-                </p>
-              </div>
-            ))}
-            <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Hire rate</p>
-              <p className="mt-1 flex items-center gap-1.5 text-xl font-semibold tabular-nums">
-                {overview!.rates.hireRate}%
-                <TrendingUp className="h-4 w-4 text-success" />
-              </p>
-            </div>
-          </CardBody>
-        </Card>
-      )}
 
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
         {/* Upcoming */}

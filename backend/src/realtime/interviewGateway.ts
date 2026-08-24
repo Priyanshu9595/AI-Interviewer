@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma';
 import { EvaluationQueue } from '../services/EvaluationQueue';
 import { InterviewStateMachine } from '../services/InterviewStateMachine';
 import { evaluateJoinGate } from '../services/JoinGate';
+import { AnswerSettler, type SettledAnswer } from '../services/AnswerSettler';
 import { InsightService } from '../services/InsightService';
 import {
   SpeechSession,
@@ -36,6 +37,12 @@ const rooms = new Map<string, Room>();
 
 /** Reconnection window before a dropped candidate counts as having left. */
 const RECONNECT_GRACE_MS = 45_000;
+
+/**
+ * Silence held after the recogniser calls a turn over, before the answer counts
+ * as finished. See AnswerSettler for why.
+ */
+const ANSWER_SETTLE_MS = 3_000;
 
 type Nsp = ReturnType<Server['of']>;
 
@@ -257,69 +264,60 @@ async function openRoom(nsp: Nsp, socket: Socket, token: string): Promise<Room |
  */
 function createSpeechSession(nsp: Nsp, room: Room): SpeechSession {
   const session = new SpeechSession(room.roomId, room.language);
-  let pending = '';
-  let confidenceSum = 0;
-  let finalCount = 0;
+  const settler = new AnswerSettler(ANSWER_SETTLE_MS, flush);
 
   session.on('transcript', (result: SpeechResult) => {
     if (!result.isFinal) {
       // Show the candidate what is being heard as they speak.
       nsp.to(room.roomId).emit('interim_transcript', { text: result.text });
+      settler.addInterim();
       return;
     }
 
-    pending = `${pending} ${result.text}`.trim();
-    confidenceSum += result.confidence;
-    finalCount++;
-
-    if (!result.speechFinal) return;
-    flush();
+    settler.addFinal(result.text, result.confidence);
+    if (result.speechFinal) endOfTurn();
   });
 
   // Deepgram's utterance boundary is the backstop when speech_final never comes.
-  session.on('utteranceEnd', flush);
+  session.on('utteranceEnd', endOfTurn);
 
-  function flush() {
-    const text = pending.trim();
-    if (!text) return;
+  // A dropped socket must not leave a submission scheduled behind it.
+  session.on('closed', () => settler.cancel());
 
+  /** The recogniser believes the candidate has stopped. */
+  function endOfTurn() {
     if (!room.acceptingAnswers) {
       // Heard while the interviewer was speaking or thinking — most likely the
       // AI's own voice through the candidate's speakers. Discard it.
-      pending = '';
-      confidenceSum = 0;
-      finalCount = 0;
+      settler.discard();
       return;
     }
 
-    const confidence = finalCount ? confidenceSum / finalCount : 0.9;
+    settler.endOfTurn();
+  }
+
+  /** The wait elapsed in silence: whatever was said is the whole answer. */
+  function flush({ text, confidence, lastHeardAt }: SettledAnswer) {
+    // The gate can shut while an answer is settling.
+    if (!room.acceptingAnswers) return;
 
     // A fan, a keyboard or a television resolved into words is not an answer.
     // Treating it as one writes it to the transcript and walks the interview
     // past a question the candidate never got to answer.
-    if (isLikelyNoise(text, confidence)) {
-      pending = '';
-      confidenceSum = 0;
-      finalCount = 0;
-      return;
-    }
-
-    const now = Date.now();
-
-    pending = '';
-    confidenceSum = 0;
-    finalCount = 0;
+    if (isLikelyNoise(text, confidence)) return;
 
     nsp.to(room.roomId).emit('final_transcript', { text });
 
     void room.machine.candidateAnswered({
       text,
       confidence,
-      latencyMs: Math.max(0, room.turnStartedAt ? now - room.turnStartedAt : 0),
+      // To when they stopped talking, not to now: the seconds spent waiting on
+      // them are ours, and would otherwise read as the candidate hesitating.
+      latencyMs: Math.max(0, room.turnStartedAt ? lastHeardAt - room.turnStartedAt : 0),
       durationMs: 0,
     });
 
-    room.turnStartedAt = now;
+    room.turnStartedAt = Date.now();
   }
 
   session.on('error', () => {

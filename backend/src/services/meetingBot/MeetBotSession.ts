@@ -356,7 +356,16 @@ export class MeetBotSession extends EventEmitter {
   private wireAudio(): void {
     const audio = this.audio!;
 
-    audio.on('interim', ({ text }) => this.emit('interim', { text }));
+    audio.on('interim', ({ text }) => {
+      this.emit('interim', { text });
+
+      // Someone talking is the opposite of silence. Without this the timer ran
+      // from the end of the question rather than from the last thing heard, so
+      // an answer longer than the window got "are you still there?" spoken over
+      // the middle of it. Only ever restarts a timer that is already running,
+      // so it cannot start one where no answer is expected.
+      if (this.silenceTimer) this.armSilenceTimer();
+    });
 
     audio.on('transcript', ({ text, confidence, latencyMs }) => {
       if (!this.interviewStarted || !this.machine) return;

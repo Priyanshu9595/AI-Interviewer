@@ -1,5 +1,6 @@
 import { EventEmitter } from 'events';
 import type { Page } from 'playwright';
+import { AnswerSettler, type SettledAnswer } from '../AnswerSettler';
 import { SpeechSession, type SpeechResult, deepgramConfigured, isLikelyNoise } from '../SpeechService';
 import { BotError } from './errors';
 import { audioBridgeScript } from './injected/audioBridge';
@@ -71,6 +72,13 @@ const CAPTURE_FALLBACK_MS = 12_000;
 const CAPTURE_DEAF_MS = 40_000;
 
 /**
+ * Silence held after the recogniser calls a turn over, before the answer counts
+ * as finished. See AnswerSettler for why. The cost is three seconds before
+ * every reply, which is the trade for not talking over the candidate.
+ */
+const ANSWER_SETTLE_MS = 3_000;
+
+/**
  * Frame level that counts as somebody speaking, as a fraction of full scale.
  *
  * About -40 dBFS. A quiet room with an open microphone sits well below it;
@@ -101,10 +109,8 @@ export class AudioManager extends EventEmitter {
   private accepting = false;
   private resumeTimer: NodeJS.Timeout | null = null;
 
-  /** Deepgram emits finals in pieces; they are joined into one utterance. */
-  private pending = '';
-  private confidenceSum = 0;
-  private finalCount = 0;
+  /** Joins Deepgram's pieces into one utterance and holds it open to settle. */
+  private readonly settler: AnswerSettler;
 
   /** When the candidate's current turn began, for the hesitation signal. */
   private turnStartedAt = Date.now();
@@ -124,6 +130,7 @@ export class AudioManager extends EventEmitter {
   ) {
     super();
     this.tts = createTtsDriver();
+    this.settler = new AnswerSettler(ANSWER_SETTLE_MS, (answer) => this.submit(answer));
   }
 
   get ttsDriver(): TtsDriver {
@@ -347,20 +354,22 @@ export class AudioManager extends EventEmitter {
 
     session.on('transcript', (result: SpeechResult) => {
       if (!result.isFinal) {
-        if (this.accepting) this.emit('interim', { text: result.text });
+        if (!this.accepting) return;
+        this.emit('interim', { text: result.text });
+        this.settler.addInterim();
         return;
       }
 
-      this.pending = `${this.pending} ${result.text}`.trim();
-      this.confidenceSum += result.confidence;
-      this.finalCount++;
-
-      if (result.speechFinal) this.flush();
+      this.settler.addFinal(result.text, result.confidence);
+      if (result.speechFinal) this.endOfTurn();
     });
 
     // Deepgram's utterance boundary is the backstop for when speech_final never
     // arrives — a candidate trailing off mid-sentence, most often.
-    session.on('utteranceEnd', () => this.flush());
+    session.on('utteranceEnd', () => this.endOfTurn());
+
+    // A dropped socket must not leave a submission scheduled behind it.
+    session.on('closed', () => this.settler.cancel());
 
     session.on('error', (err: Error) => {
       this.emit('speechFailed', new BotError('SPEECH_TO_TEXT_UNAVAILABLE', err.message));
@@ -370,21 +379,22 @@ export class AudioManager extends EventEmitter {
     return session;
   }
 
-  private flush(): void {
-    const text = this.pending.trim();
-    const confidence = this.finalCount ? this.confidenceSum / this.finalCount : 0.9;
-
-    this.pending = '';
-    this.confidenceSum = 0;
-    this.finalCount = 0;
-
-    if (!text) return;
-
+  /** The recogniser believes the candidate has stopped. */
+  private endOfTurn(): void {
     if (!this.accepting) {
       // Heard while the interviewer was speaking or thinking. Almost certainly
       // the AI's own voice coming back through the candidate's microphone.
+      this.settler.discard();
       return;
     }
+
+    this.settler.endOfTurn();
+  }
+
+  /** The wait elapsed in silence: whatever was said is the whole answer. */
+  private submit({ text, confidence, lastHeardAt }: SettledAnswer): void {
+    // The gate can shut while an answer is settling.
+    if (!this.accepting) return;
 
     // A meeting carries every noise in every participant's room. The gate in
     // the bridge keeps most of it out of the recogniser; this catches what
@@ -395,9 +405,11 @@ export class AudioManager extends EventEmitter {
       return;
     }
 
-    const now = Date.now();
-    const latencyMs = Math.max(0, now - this.turnStartedAt);
-    this.turnStartedAt = now;
+    // Measured to when they stopped talking, not to now — the three seconds
+    // spent waiting on them are ours, and counting them would show up as
+    // hesitation the candidate never displayed.
+    const latencyMs = Math.max(0, lastHeardAt - this.turnStartedAt);
+    this.turnStartedAt = Date.now();
 
     this.emit('transcript', { text, confidence, latencyMs });
   }
@@ -412,10 +424,9 @@ export class AudioManager extends EventEmitter {
     this.resumeTimer = null;
 
     // Drop anything buffered while the gate was shut, so the previous turn's
-    // stray audio cannot be prepended to this answer.
-    this.pending = '';
-    this.confidenceSum = 0;
-    this.finalCount = 0;
+    // stray audio cannot be prepended to this answer — and with it any wait
+    // still running from that turn.
+    this.settler.discard();
 
     this.accepting = true;
     this.turnStartedAt = Date.now();
@@ -425,6 +436,7 @@ export class AudioManager extends EventEmitter {
   stopListening(): void {
     if (this.resumeTimer) clearTimeout(this.resumeTimer);
     this.resumeTimer = null;
+    this.settler.cancel();
     this.accepting = false;
   }
 
@@ -475,6 +487,7 @@ export class AudioManager extends EventEmitter {
 
     if (this.resumeTimer) clearTimeout(this.resumeTimer);
     this.resumeTimer = null;
+    this.settler.discard();
     for (const timer of this.captureTimers) clearTimeout(timer);
     this.captureTimers = [];
     this.accepting = false;

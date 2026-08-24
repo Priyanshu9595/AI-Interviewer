@@ -25,6 +25,7 @@
     "verify:noise": "tsx scripts/noisetest.ts",
     "verify:models": "tsx scripts/modeltest.ts",
     "verify:scoring": "tsx scripts/scoringtest.ts",
+    "verify:settle": "tsx scripts/settletest.ts",
     "reevaluate": "tsx scripts/reevaluate.ts",
     "typecheck": "tsc --noEmit -p tsconfig.scripts.json",
     "verify:resumedb": "tsx scripts/resumedbtest.ts",

@@ -202,7 +202,7 @@ enum QuestionDifficulty {
   MEDIUM
   HARD
 }
-
+                
 model QuestionSet {
   id                 String   @id @default(uuid())
   interviewSessionId String   @unique

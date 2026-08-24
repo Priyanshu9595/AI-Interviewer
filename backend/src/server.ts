@@ -7,6 +7,7 @@ import { FAST_MODEL, providerLabel, SMART_MODEL } from './lib/ai';
 import { env } from './lib/env';
 import { errorHandler, notFoundHandler } from './lib/http';
 import { emailSenderStatus, verifyEmailSender } from './lib/email/EmailService';
+import { closeRedis, getRedisStatus } from './lib/redis';
 import { getSpeechStatus, verifySpeech } from './services/SpeechService';
 import { checkDatabase, prisma } from './lib/prisma';
 import { configureInterviewGateway, activeInterviewCount } from './realtime/interviewGateway';
@@ -30,7 +31,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
 app.get('/health', async (_req, res) => {
-  const alive = await checkDatabase();
+  const [alive, redisStatus] = await Promise.all([checkDatabase(), getRedisStatus()]);
   const database = alive ? 'ok' : 'unreachable';
 
   res.status(alive ? 200 : 503).json({
@@ -38,6 +39,9 @@ app.get('/health', async (_req, res) => {
     database,
     emailSender: emailSenderStatus(),
     speechToText: getSpeechStatus(),
+    // Signup codes live here. "Signup is broken" and "Redis is unreachable from
+    // this host" are one incident, and only the first is visible from outside.
+    redis: redisStatus,
     // Which service is answering the model calls, and as what. Reported because
     // "is production on the provider I configured?" is otherwise a question
     // only a live interview can answer.
@@ -145,6 +149,7 @@ const shutdown = async (signal: string) => {
   await MeetBotManager.shutdown().catch(() => {});
   io.close();
   httpServer.close();
+  await closeRedis().catch(() => {});
   await prisma.$disconnect();
   process.exit(0);
 };

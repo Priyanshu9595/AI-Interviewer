@@ -46,6 +46,16 @@ const envSchema = z.object({
   EMAIL_FROM: z.string().default('no-reply@aiinterview.app'),
   EMAIL_FROM_NAME: z.string().default('AI Interview Platform'),
 
+  /**
+   * Redis, for signup one-time codes.
+   *
+   * Optional so the rest of the app runs without it, but signup refuses to
+   * start rather than fall back to memory: a code held in one process is
+   * invisible to the next request when more than one instance is running,
+   * which fails as "wrong code" on a code that was right.
+   */
+  REDIS_URL: z.string().optional(),
+
   // Meeting providers. Any that are unconfigured fall back to the built-in room.
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),

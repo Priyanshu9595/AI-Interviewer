@@ -17,7 +17,17 @@ interface AuthContextValue {
   /** True until the initial refresh attempt settles. */
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (input: { email: string; password: string; name?: string; company?: string }) => Promise<void>;
+  /** Sends a verification code to the address. No account exists until it is confirmed. */
+  startRegister: (input: {
+    email: string;
+    password: string;
+    name?: string;
+    company?: string;
+  }) => Promise<{ expiresInSeconds: number; resendInSeconds: number }>;
+  /** Confirms the code, which is what actually creates the account and signs in. */
+  confirmRegister: (input: { email: string; code: string }) => Promise<void>;
+  /** Issues a fresh code for a sign-up already in flight. */
+  resendRegisterCode: (email: string) => Promise<{ expiresInSeconds: number }>;
   logout: () => Promise<void>;
 }
 
@@ -59,14 +69,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(res.data.user);
   }, []);
 
-  const register = useCallback(
+  const startRegister = useCallback(
     async (input: { email: string; password: string; name?: string; company?: string }) => {
-      const res = await api.post<{ accessToken: string; user: User }>('/auth/register', input);
-      setAccessToken(res.data.accessToken);
-      setUser(res.data.user);
+      const res = await api.post<{ expiresInSeconds: number; resendInSeconds: number }>(
+        '/auth/register/start',
+        input,
+      );
+      return res.data;
     },
     [],
   );
+
+  const confirmRegister = useCallback(async (input: { email: string; code: string }) => {
+    const res = await api.post<{ accessToken: string; user: User }>('/auth/register/verify', input);
+    setAccessToken(res.data.accessToken);
+    setUser(res.data.user);
+  }, []);
+
+  const resendRegisterCode = useCallback(async (email: string) => {
+    const res = await api.post<{ expiresInSeconds: number }>('/auth/register/resend', { email });
+    return res.data;
+  }, []);
 
   const logout = useCallback(async () => {
     await api.post('/auth/logout').catch(() => {});
@@ -75,7 +98,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     router.push('/');
   }, [router]);
 
-  const value = useMemo(() => ({ user, loading, login, register, logout }), [user, loading, login, register, logout]);
+  const value = useMemo(
+    () => ({ user, loading, login, startRegister, confirmRegister, resendRegisterCode, logout }),
+    [user, loading, login, startRegister, confirmRegister, resendRegisterCode, logout],
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

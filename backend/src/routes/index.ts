@@ -40,7 +40,10 @@ const resumeUpload = multer({
 // Auth
 // ---------------------------------------------------------------------------
 
-router.post('/auth/register', asyncHandler(auth.register));
+// Signing up is two steps: a code to the address, then the account.
+router.post('/auth/register/start', asyncHandler(auth.registerStart));
+router.post('/auth/register/verify', asyncHandler(auth.registerVerify));
+router.post('/auth/register/resend', asyncHandler(auth.registerResend));
 router.post('/auth/login', asyncHandler(auth.login));
 router.post('/auth/refresh', asyncHandler(auth.refresh));
 router.post('/auth/logout', asyncHandler(auth.logout));

@@ -26,6 +26,7 @@
     "verify:models": "tsx scripts/modeltest.ts",
     "verify:scoring": "tsx scripts/scoringtest.ts",
     "verify:settle": "tsx scripts/settletest.ts",
+    "verify:otp": "tsx scripts/otptest.ts",
     "reevaluate": "tsx scripts/reevaluate.ts",
     "verify:resumedb": "tsx scripts/resumedbtest.ts",
     "verify:incomplete": "tsx scripts/incompletetest.ts",

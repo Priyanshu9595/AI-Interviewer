@@ -134,6 +134,38 @@ export class EmailService {
     }
   }
 
+  /**
+   * The sign-up verification code.
+   *
+   * Deliberately plain: no links and nothing to click, because a message whose
+   * only instruction is "type these six digits into the tab you already have
+   * open" cannot be turned into a phishing template. The code is shown large
+   * because most people read it off a phone while typing on a laptop.
+   */
+  async sendSignupOtp(args: { to: string; name?: string | null; code: string; expiresInSeconds: number }) {
+    const minutes = Math.round(args.expiresInSeconds / 60);
+    const validFor = args.expiresInSeconds < 90 ? `${args.expiresInSeconds} seconds` : `${minutes} minutes`;
+
+    const body = `
+      <p>Hi${args.name ? ` ${args.name}` : ''},</p>
+      <p>Use this code to finish creating your account.</p>
+      <div style="margin:24px 0;padding:20px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;text-align:center;">
+        <div style="font-size:34px;font-weight:600;letter-spacing:0.22em;color:#0f172a;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;">${args.code}</div>
+        <div style="font-size:12px;color:#64748b;margin-top:8px;">Valid for ${validFor}</div>
+      </div>
+      <p style="color:#64748b;font-size:14px;">If you did not try to sign up, you can ignore this — no account has been created, and nothing happens unless the code is used.</p>`;
+
+    await this.send({
+      to: args.to,
+      toName: args.name ?? undefined,
+      subject: `${args.code} is your verification code`,
+      html: shell('Verify your email', body),
+      text: `Your verification code is ${args.code}. It is valid for ${validFor}.
+
+If you did not try to sign up, you can ignore this - no account has been created.`,
+    });
+  }
+
   async sendInvite(args: {
     to: string;
     name: string;

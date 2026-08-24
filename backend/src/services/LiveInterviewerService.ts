@@ -192,7 +192,7 @@ If the candidate becomes distressed or asks to stop, confirm once kindly and use
    * continuous turn rather than a warm line followed by a script.
    */
   intro(opener: string): string {
-    return `${opener} I am ${this.persona.name}, and I am going to be taking your interview today for the ${this.ctx.jobTitle} role. We have about ${this.ctx.durationMinutes} minutes — a few questions about your background and experience, and I will leave time at the end for any of yours. Before we start, could you confirm your full name and the role you have applied for?`;
+    return `${opener} I am ${this.persona.name}, and I am going to be taking your interview today for the ${this.ctx.jobTitle} role. We have about ${this.ctx.durationMinutes} minutes — a few questions about your background and experience. Before we start, could you confirm your full name and the role you have applied for?`;
   }
 
   async respond(args: {
